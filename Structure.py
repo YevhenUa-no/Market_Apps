@@ -4,41 +4,34 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 
-# --- Function to fetch available tickers from yfinance info ---
+# --- Function to load tickers from NASDAQ ---
 @st.cache_data
-def get_yahoo_tickers_from_info():
+def load_tickers_from_nasdaq():
+    url = "ftp://ftp.nasdaqtrader.com/SymbolDirectory/nasdaqlisted.txt"
     try:
-        # Get information for a known popular ticker to access the 'info' dictionary
-        aapl_info = yf.Ticker("AAPL").info
-        if 'symbol' in aapl_info and 'exchange' in aapl_info:
-            exchange = aapl_info['exchange']
-            # This is a very basic and potentially incomplete way.
-            # There isn't a direct API call to get *all* symbols.
-            # This attempts to get symbols associated with a major exchange.
-            # The 'exchange' key might not always provide a direct way to list symbols.
-            # This approach is limited and might not be reliable.
-            if exchange in ["NMS", "NYQ", "AMEX"]:  # Common US exchanges
-                # This is still a simplification. A true list requires a dedicated API.
-                # We'll return a placeholder message as direct API access is limited.
-                return ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "JPM", "V", "JNJ", "META"]
-            else:
-                return ["AAPL", "MSFT", "GOOGL"] # Default if exchange is not recognized
-        else:
-            return ["AAPL", "MSFT", "GOOGL"] # Default if basic info is missing
+        df = pd.read_csv(url, sep="|")
+        df = df[["Symbol", "Security Name"]].rename(columns={"Security Name": "Name"})
+        df = df[df["Symbol"].str.isalpha()]  # Filter out test/listed-only symbols
+        return df
     except Exception as e:
-        st.error(f"Error fetching ticker information: {e}")
-        return ["AAPL", "MSFT", "GOOGL"] # Default on error
+        st.error(f"Failed to load tickers from NASDAQ Trader: {e}")
+        return pd.DataFrame(columns=["Symbol", "Name"])
 
-# --- Function to search tickers by name (Simplified - now used for suggestions) ---
+# --- Function to search tickers ---
 @st.cache_data
-def search_tickers(query, all_tickers):
+def search_tickers(query, all_tickers_df):
     if not query:
-        return all_tickers[:5]  # Show a few suggestions initially
-    results = [ticker for ticker in all_tickers if query.upper() in ticker]
-    return sorted(results)
+        return all_tickers_df.head(5)
+    results = all_tickers_df[all_tickers_df['Symbol'].str.contains(query.upper(), na=False) |
+                              all_tickers_df['Name'].str.contains(query, case=False, na=False)]
+    return results
 
 st.title("Stock Performance Dashboard")
 st.markdown("Select a ticker or search by name to view its performance.")
+
+# Load tickers from NASDAQ
+nasdaq_tickers_df = load_tickers_from_nasdaq()
+all_available_tickers = nasdaq_tickers_df['Symbol'].tolist()
 
 # Sidebar for Ticker Selection
 st.sidebar.header("Stock Selection")
@@ -46,21 +39,28 @@ st.sidebar.header("Stock Selection")
 # Option to select from a dropdown or search
 select_option = st.sidebar.radio("Select Ticker By:", ["Dropdown", "Search by Name"])
 
-all_available_tickers = get_yahoo_tickers_from_info()
 ticker_symbol = None
 
 if select_option == "Dropdown":
-    ticker_symbol = st.sidebar.selectbox("Select Ticker", all_available_tickers)
+    if all_available_tickers:
+        ticker_symbol = st.sidebar.selectbox("Select Ticker", sorted(all_available_tickers))
+    else:
+        st.sidebar.warning("Could not load tickers for the dropdown.")
 elif select_option == "Search by Name":
     search_query = st.sidebar.text_input("Enter Company Name or Ticker Fragment", "")
     if search_query:
-        search_results = search_tickers(search_query, all_available_tickers)
-        if search_results:
-            ticker_symbol = st.sidebar.selectbox("Search Results", search_results)
-        elif search_query:  # Only show "No tickers found" if there was a query
-            st.sidebar.info("No tickers found matching your search.")
+        search_results_df = search_tickers(search_query, nasdaq_tickers_df)
+        if not search_results_df.empty:
+            selected_ticker_info = st.sidebar.selectbox(
+                "Search Results",
+                search_results_df['Symbol'].tolist(),
+                format_func=lambda symbol: f"{symbol} ({nasdaq_tickers_df.loc[nasdaq_tickers_df['Symbol'] == symbol, 'Name'].iloc[0]})"
+            )
+            ticker_symbol = selected_ticker_info
+        else:
+            st.sidebar.info("No tickers found matching your search on NASDAQ.")
     else:
-        st.sidebar.info(f"Try typing a company name or ticker. Here are a few suggestions: {', '.join(all_available_tickers[:5])}")
+        st.sidebar.info("Try typing a company name or ticker to search NASDAQ listings.")
 
 # Sidebar for Time Period Selection (Only show if a ticker is selected)
 if ticker_symbol:
@@ -96,61 +96,3 @@ if ticker_symbol:
 
     # Fetch Data
     data = None
-    error_message = None
-
-    st.subheader(f"Performance of {ticker_symbol}")
-
-    if period or start_date:
-        with st.spinner(f"Fetching data for {ticker_symbol}..."):
-            try:
-                if selected_time == "Custom":
-                    data = yf.download(ticker_symbol, start=start_date, end=end_date)
-                else:
-                    data = yf.download(ticker_symbol, period=period)
-            except Exception as e:
-                error_message = f"An error occurred while fetching data for {ticker_symbol}: {e}"
-
-        if error_message:
-            st.error(error_message)
-        elif data is not None and not data.empty:
-            st.dataframe(data)
-
-            # Price Chart
-            st.subheader(f"{ticker_symbol} Closing Price")
-            close_prices = data[('Close', ticker_symbol)]
-            fig_price = px.line(data, x=data.index, y=close_prices, title=f"{ticker_symbol} Closing Price Over Time")
-            st.plotly_chart(fig_price, use_container_width=True)
-
-            # Volume Chart (Optional)
-            show_volume = st.checkbox("Show Volume Chart")
-            if show_volume:
-                st.subheader(f"{ticker_symbol} Trading Volume")
-                volume_data = data[('Volume', ticker_symbol)]
-                fig_volume = px.bar(data, x=data.index, y=volume_data, title=f"{ticker_symbol} Trading Volume Over Time")
-                st.plotly_chart(fig_volume, use_container_width=True)
-
-            # Calculate and Display Performance Metrics
-            st.subheader("Performance Metrics")
-            if len(data) > 1:
-                start_price = data[('Close', ticker_symbol)].iloc[0]
-                end_price = data[('Close', ticker_symbol)].iloc[-1]
-                price_change = end_price - start_price
-                percent_change = (price_change / start_price) * 100
-
-                st.metric("Start Price", f"{start_price:.2f}")
-                st.metric("End Price", f"{end_price:.2f}")
-                st.metric("Price Change", f"{price_change:.2f}")
-                st.metric("Percentage Change", f"{percent_change:.2f}%")
-            else:
-                st.info("Not enough data points to calculate performance metrics for the selected period.")
-
-        elif period or start_date:
-            st.info(f"No data available for {ticker_symbol} for the selected time period.")
-    else:
-        st.info("Please select a time period in the sidebar.")
-
-else:
-    st.info("Please select a ticker symbol in the sidebar.")
-
-st.markdown("---")
-st.markdown("Data provided by Yahoo Finance using the `yfinance` library.")
