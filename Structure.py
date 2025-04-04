@@ -3,17 +3,21 @@ import yfinance as yf
 import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
-import io
 
 # --- Function to load tickers from NASDAQ and return only Symbol ---
 @st.cache_data
 def load_nasdaq_symbols():
     url = "ftp://ftp.nasdaqtrader.com/SymbolDirectory/nasdaqlisted.txt"
     try:
-        response = pd.read_csv(url, sep="|", skiprows=[0])  # Skip the initial descriptive line
-        symbols_df = response[['Symbol']].copy()
-        symbols_df = symbols_df[symbols_df['Symbol'].str.isalpha()]  # Filter out non-alphabetic symbols
-        return sorted(symbols_df['Symbol'].tolist())
+        response = pd.read_csv(url, sep="|")  # Let pandas infer the header
+        print("Columns in the loaded DataFrame:", response.columns) # Debugging line
+        if 'Symbol' in response.columns:
+            symbols_df = response[['Symbol']].copy()
+            symbols_df = symbols_df[symbols_df['Symbol'].str.isalpha()]
+            return sorted(symbols_df['Symbol'].tolist())
+        else:
+            st.error("Error: 'Symbol' column not found in NASDAQ data.")
+            return []
     except Exception as e:
         st.error(f"Failed to load symbols from NASDAQ Trader: {e}")
         return []
@@ -99,46 +103,4 @@ if ticker_symbol:
             try:
                 data = yf.download(ticker_symbol, start=start_date, end=end_date) if selected_time == "Custom" else yf.download(ticker_symbol, period=period)
             except Exception as e:
-                error_message = f"An error occurred while fetching data for {ticker_symbol}: {e}"
-
-        if error_message:
-            st.error(error_message)
-        elif data is not None and not data.empty:
-            st.dataframe(data)
-
-            # Price Chart
-            st.subheader(f"{ticker_symbol} Closing Price")
-            close_prices = data[('Close', ticker_symbol)]
-            fig_price = px.line(data, x=data.index, y=close_prices, title=f"{ticker_symbol} Closing Price Over Time")
-            st.plotly_chart(fig_price, use_container_width=True)
-
-            # Volume Chart (Optional)
-            show_volume = st.checkbox("Show Volume Chart")
-            if show_volume:
-                st.subheader(f"{ticker_symbol} Trading Volume")
-                volume_data = data[('Volume', ticker_symbol)]
-                fig_volume = px.bar(data, x=data.index, y=volume_data, title=f"{ticker_symbol} Trading Volume Over Time")
-                st.plotly_chart(fig_volume, use_container_width=True)
-
-            # Calculate and Display Performance Metrics
-            st.subheader("Performance Metrics")
-            if len(data) > 1:
-                start_price = data[('Close', ticker_symbol)].iloc[0]
-                end_price = data[('Close', ticker_symbol)].iloc[-1]
-                price_change = end_price - start_price
-                percent_change = (price_change / start_price) * 100
-
-                st.metric("Start Price", f"{start_price:.2f}")
-                st.metric("End Price", f"{end_price:.2f}")
-                st.metric("Price Change", f"{price_change:.2f}")
-                st.metric("Percentage Change", f"{percent_change:.2f}%")
-            else:
-                st.info("Not enough data points to calculate performance metrics for the selected period.")
-
-        elif period or start_date:
-            st.info(f"No data available for {ticker_symbol} for the selected time period.")
-    else:
-        st.info("Please select a ticker symbol in the sidebar.")
-
-st.markdown("---")
-st.markdown("Data provided by Yahoo Finance and NASDAQ Trader.")
+                error_message =
