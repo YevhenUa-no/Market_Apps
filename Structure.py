@@ -38,6 +38,6 @@ else:
     st.session_state.end_date = None
 
 pg = st.navigation([
-    st.Page("makret_tracking.py", "Market Tracking"),
+    st.Page("makret_tracking.py", name="Market Tracking"),
     # Add other pages here if you have them
 ])
