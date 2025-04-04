@@ -2,5 +2,5 @@ import streamlit as st
 
 pg = st.navigation([
     st.Page("makret_tracking.py", name="Market Tracking"),
-     # Show me this line
+    # st.Page("your_new_page.py", name="Your New Page"),  # Comment out other pages
 ])
