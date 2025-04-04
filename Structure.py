@@ -64,21 +64,21 @@ if ticker_symbol:
 
             # Price Chart
             st.subheader(f"{ticker_symbol} Closing Price")
-            fig_price = px.line(data, x=data.index, y="Close", title=f"{ticker_symbol} Closing Price Over Time")
+            fig_price = px.line(data, x=data.index, y=('Close', ticker_symbol), title=f"{ticker_symbol} Closing Price Over Time")
             st.plotly_chart(fig_price, use_container_width=True)
 
             # Volume Chart (Optional)
             show_volume = st.checkbox("Show Volume Chart")
             if show_volume:
                 st.subheader(f"{ticker_symbol} Trading Volume")
-                fig_volume = px.bar(data, x=data.index, y="Volume", title=f"{ticker_symbol} Trading Volume Over Time")
+                fig_volume = px.bar(data, x=data.index, y=('Volume', ticker_symbol), title=f"{ticker_symbol} Trading Volume Over Time")
                 st.plotly_chart(fig_volume, use_container_width=True)
 
             # Calculate and Display Performance Metrics
             st.subheader("Performance Metrics")
             if len(data) > 1:
-                start_price = data['Close'].iloc[0]
-                end_price = data['Close'].iloc[-1]
+                start_price = data[('Close', ticker_symbol)].iloc[0]
+                end_price = data[('Close', ticker_symbol)].iloc[-1]
                 price_change = end_price - start_price
                 percent_change = (price_change / start_price) * 100
 
