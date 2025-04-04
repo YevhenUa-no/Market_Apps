@@ -64,14 +64,16 @@ if ticker_symbol:
 
             # Price Chart
             st.subheader(f"{ticker_symbol} Closing Price")
-            fig_price = px.line(data, x=data.index, y=('Close', ticker_symbol), title=f"{ticker_symbol} Closing Price Over Time")
+            close_prices = data[('Close', ticker_symbol)]  # Extract the 'Close' column
+            fig_price = px.line(data, x=data.index, y=close_prices, title=f"{ticker_symbol} Closing Price Over Time")
             st.plotly_chart(fig_price, use_container_width=True)
 
             # Volume Chart (Optional)
             show_volume = st.checkbox("Show Volume Chart")
             if show_volume:
                 st.subheader(f"{ticker_symbol} Trading Volume")
-                fig_volume = px.bar(data, x=data.index, y=('Volume', ticker_symbol), title=f"{ticker_symbol} Trading Volume Over Time")
+                volume_data = data[('Volume', ticker_symbol)] # Extract the 'Volume' column
+                fig_volume = px.bar(data, x=data.index, y=volume_data, title=f"{ticker_symbol} Trading Volume Over Time")
                 st.plotly_chart(fig_volume, use_container_width=True)
 
             # Calculate and Display Performance Metrics
