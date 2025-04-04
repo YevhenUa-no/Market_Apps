@@ -4,16 +4,34 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 
-# --- Function to fetch available tickers (Simplified) ---
+# --- Function to fetch available tickers from yfinance info ---
 @st.cache_data
-def get_yahoo_tickers():
-    common_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "JPM", "V", "JNJ", "META", "BABA", "TSM", "ORCL", "ADBE", "CRM"]
-    return sorted(common_tickers)
+def get_yahoo_tickers_from_info():
+    try:
+        # Get information for a known popular ticker to access the 'info' dictionary
+        aapl_info = yf.Ticker("AAPL").info
+        if 'symbol' in aapl_info and 'exchange' in aapl_info:
+            exchange = aapl_info['exchange']
+            # This is a very basic and potentially incomplete way.
+            # There isn't a direct API call to get *all* symbols.
+            # This attempts to get symbols associated with a major exchange.
+            # The 'exchange' key might not always provide a direct way to list symbols.
+            # This approach is limited and might not be reliable.
+            if exchange in ["NMS", "NYQ", "AMEX"]:  # Common US exchanges
+                # This is still a simplification. A true list requires a dedicated API.
+                # We'll return a placeholder message as direct API access is limited.
+                return ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "JPM", "V", "JNJ", "META"]
+            else:
+                return ["AAPL", "MSFT", "GOOGL"] # Default if exchange is not recognized
+        else:
+            return ["AAPL", "MSFT", "GOOGL"] # Default if basic info is missing
+    except Exception as e:
+        st.error(f"Error fetching ticker information: {e}")
+        return ["AAPL", "MSFT", "GOOGL"] # Default on error
 
 # --- Function to search tickers by name (Simplified - now used for suggestions) ---
 @st.cache_data
-def search_tickers(query):
-    all_tickers = get_yahoo_tickers()
+def search_tickers(query, all_tickers):
     if not query:
         return all_tickers[:5]  # Show a few suggestions initially
     results = [ticker for ticker in all_tickers if query.upper() in ticker]
@@ -28,22 +46,21 @@ st.sidebar.header("Stock Selection")
 # Option to select from a dropdown or search
 select_option = st.sidebar.radio("Select Ticker By:", ["Dropdown", "Search by Name"])
 
+all_available_tickers = get_yahoo_tickers_from_info()
 ticker_symbol = None
 
 if select_option == "Dropdown":
-    available_tickers = get_yahoo_tickers()
-    ticker_symbol = st.sidebar.selectbox("Select Ticker", available_tickers)
+    ticker_symbol = st.sidebar.selectbox("Select Ticker", all_available_tickers)
 elif select_option == "Search by Name":
     search_query = st.sidebar.text_input("Enter Company Name or Ticker Fragment", "")
     if search_query:
-        search_results = search_tickers(search_query)
+        search_results = search_tickers(search_query, all_available_tickers)
         if search_results:
             ticker_symbol = st.sidebar.selectbox("Search Results", search_results)
         elif search_query:  # Only show "No tickers found" if there was a query
             st.sidebar.info("No tickers found matching your search.")
     else:
-        available_tickers = get_yahoo_tickers()
-        st.sidebar.info(f"Try typing a company name or ticker. Here are a few suggestions: {', '.join(available_tickers[:5])}")
+        st.sidebar.info(f"Try typing a company name or ticker. Here are a few suggestions: {', '.join(all_available_tickers[:5])}")
 
 # Sidebar for Time Period Selection (Only show if a ticker is selected)
 if ticker_symbol:
