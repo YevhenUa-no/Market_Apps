@@ -4,22 +4,18 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime, timedelta
 
-# --- Function to fetch available tickers (This is a simplified approach) ---
+# --- Function to fetch available tickers (Simplified) ---
 @st.cache_data
 def get_yahoo_tickers():
-    # This is a very basic and incomplete way to get tickers.
-    # A comprehensive solution would involve a more robust API or data source.
-    # For demonstration, we'll use a small, common list.
-    common_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "JPM", "V", "JNJ", "FB"]
+    common_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "JPM", "V", "JNJ", "META", "BABA", "TSM", "ORCL", "ADBE", "CRM"]
     return sorted(common_tickers)
 
-# --- Function to search tickers by name (Simplified) ---
+# --- Function to search tickers by name (Simplified - now used for suggestions) ---
 @st.cache_data
 def search_tickers(query):
-    # This is a placeholder. A real implementation would require an API
-    # that allows searching tickers by company name.
-    # For demonstration, we'll just check if the query is in our common list.
     all_tickers = get_yahoo_tickers()
+    if not query:
+        return all_tickers[:5]  # Show a few suggestions initially
     results = [ticker for ticker in all_tickers if query.upper() in ticker]
     return sorted(results)
 
@@ -29,23 +25,25 @@ st.markdown("Select a ticker or search by name to view its performance.")
 # Sidebar for Ticker Selection
 st.sidebar.header("Stock Selection")
 
-# Option to select from a dropdown
+# Option to select from a dropdown or search
 select_option = st.sidebar.radio("Select Ticker By:", ["Dropdown", "Search by Name"])
+
+ticker_symbol = None
 
 if select_option == "Dropdown":
     available_tickers = get_yahoo_tickers()
     ticker_symbol = st.sidebar.selectbox("Select Ticker", available_tickers)
 elif select_option == "Search by Name":
-    search_query = st.sidebar.text_input("Enter Company Name or Ticker Fragment")
+    search_query = st.sidebar.text_input("Enter Company Name or Ticker Fragment", "")
     if search_query:
         search_results = search_tickers(search_query)
         if search_results:
             ticker_symbol = st.sidebar.selectbox("Search Results", search_results)
-        else:
+        elif search_query:  # Only show "No tickers found" if there was a query
             st.sidebar.info("No tickers found matching your search.")
-            ticker_symbol = None
     else:
-        ticker_symbol = None
+        available_tickers = get_yahoo_tickers()
+        st.sidebar.info(f"Try typing a company name or ticker. Here are a few suggestions: {', '.join(available_tickers[:5])}")
 
 # Sidebar for Time Period Selection (Only show if a ticker is selected)
 if ticker_symbol:
@@ -64,7 +62,7 @@ if ticker_symbol:
         "Max": "max",
         "Custom": "custom",
     }
-    selected_time = st.sidebar.selectbox("Select Time Period", list(time_options.keys()), index=6)  # Default to 2 Years
+    selected_time = st.sidebar.selectbox("Select Time Period", list(time_options.keys()), index=6)
 
     start_date = None
     end_date = datetime.now().date()
