@@ -103,4 +103,46 @@ if ticker_symbol:
             try:
                 data = yf.download(ticker_symbol, start=start_date, end=end_date) if selected_time == "Custom" else yf.download(ticker_symbol, period=period)
             except Exception as e:
-                error_message =
+                error_message = f"An error occurred while fetching data for {ticker_symbol}: {e}"
+
+        if error_message:
+            st.error(error_message)
+        elif data is not None and not data.empty:
+            st.dataframe(data)
+
+            # Price Chart
+            st.subheader(f"{ticker_symbol} Closing Price")
+            close_prices = data[('Close', ticker_symbol)]
+            fig_price = px.line(data, x=data.index, y=close_prices, title=f"{ticker_symbol} Closing Price Over Time")
+            st.plotly_chart(fig_price, use_container_width=True)
+
+            # Volume Chart (Optional)
+            show_volume = st.checkbox("Show Volume Chart")
+            if show_volume:
+                st.subheader(f"{ticker_symbol} Trading Volume")
+                volume_data = data[('Volume', ticker_symbol)]
+                fig_volume = px.bar(data, x=data.index, y=volume_data, title=f"{ticker_symbol} Trading Volume Over Time")
+                st.plotly_chart(fig_volume, use_container_width=True)
+
+            # Calculate and Display Performance Metrics
+            st.subheader("Performance Metrics")
+            if len(data) > 1:
+                start_price = data[('Close', ticker_symbol)].iloc[0]
+                end_price = data[('Close', ticker_symbol)].iloc[-1]
+                price_change = end_price - start_price
+                percent_change = (price_change / start_price) * 100
+
+                st.metric("Start Price", f"{start_price:.2f}")
+                st.metric("End Price", f"{end_price:.2f}")
+                st.metric("Price Change", f"{price_change:.2f}")
+                st.metric("Percentage Change", f"{percent_change:.2f}%")
+            else:
+                st.info("Not enough data points to calculate performance metrics for the selected period.")
+
+        elif period or start_date:
+            st.info(f"No data available for {ticker_symbol} for the selected time period.")
+    else:
+        st.info("Please select a ticker symbol in the sidebar.")
+
+st.markdown("---")
+st.markdown("Data provided by Yahoo Finance and NASDAQ Trader.")
