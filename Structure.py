@@ -4,82 +4,85 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
-# App title
-st.set_page_config(page_title="Stock Dashboard", layout="wide")
-st.title("📈 Stock Dashboard")
+st.set_page_config(page_title="📈 Stock Investment Tracker", layout="wide")
 
-# Sidebar Inputs
-st.sidebar.header("Configuration")
-ticker_symbol = st.sidebar.text_input("Enter Stock Ticker", value="AAPL")
-start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2022-01-01"))
-end_date = st.sidebar.date_input("End Date", value=datetime.today())
+# Title
+st.title("📈 Stock Investment Dashboard")
 
-investment_date_full = st.sidebar.date_input("Investment Start Date", value=pd.to_datetime("2022-01-01"))
-investment_amount = st.sidebar.number_input("Investment Amount ($)", value=1000)
+# Sidebar: Ticker input
+st.sidebar.header("Select Stock")
+try:
+    tickers_list = yf.Tickers("AAPL MSFT NVDA TSLA AMZN META GOOGL NFLX BA KO JPM V").tickers
+    ticker_names = sorted(tickers_list.keys())
+    ticker_symbol = st.sidebar.selectbox("Choose a stock", ticker_names)
+except:
+    st.sidebar.warning("Could not load tickers for the dropdown.")
+    ticker_symbol = None
 
-# Download stock data
-data = yf.download(ticker_symbol, start=start_date, end=end_date)
-
-# Flatten columns if MultiIndex (e.g., if multiple tickers were used)
-if isinstance(data.columns, pd.MultiIndex):
-    data.columns = ['_'.join(col).strip() for col in data.columns.values]
-
-# Display data
-st.subheader(f"Stock Data for {ticker_symbol}")
-st.dataframe(data.tail(), use_container_width=True)
-
-# Line chart for stock price
-close_col = f'Close_{ticker_symbol}' if f'Close_{ticker_symbol}' in data.columns else 'Close'
-fig_price = px.line(data, x=data.index, y=close_col, title=f"{ticker_symbol} Stock Price Over Time")
-fig_price.update_yaxes(title_text="Stock Price ($)")
-st.plotly_chart(fig_price, use_container_width=True)
-
-# Bar chart for volume
-volume_col = f'Volume_{ticker_symbol}' if f'Volume_{ticker_symbol}' in data.columns else 'Volume'
-fig_volume = px.bar(data, x=data.index, y=volume_col, title=f"{ticker_symbol} Trading Volume Over Time")
-fig_volume.update_yaxes(title_text="Volume")
-st.plotly_chart(fig_volume, use_container_width=True)
-
-# Investment value development
-if pd.to_datetime(investment_date_full) not in data.index:
-    st.warning("Selected investment start date not in available data range. Please choose another date.")
-else:
-    initial_price = data.loc[investment_date_full, close_col]
-    data['Value'] = (data[close_col] / initial_price) * investment_amount
-    final_price = data[close_col].iloc[-1]
-    final_value = data['Value'].iloc[-1]
+if ticker_symbol:
+    ticker = yf.Ticker(ticker_symbol)
+    data = ticker.history(period="2y")
     
-    total_return_pct = ((final_price - initial_price) / initial_price) * 100
-    total_gain = final_value - investment_amount
-
-    # Calculate annualized return
-    num_days = (data.index[-1] - investment_date_full).days
-    if num_days > 0:
-        annualized_return_pct = ((final_value / investment_amount) ** (365 / num_days) - 1) * 100
+    if data.empty:
+        st.warning("No data available for the selected ticker.")
     else:
-        annualized_return_pct = 0.0
+        data = data.dropna()
+        data.index = pd.to_datetime(data.index)
 
-    # Line chart
-    fig_investment = px.line(
-        data,
-        x=data.index,
-        y='Value',
-        title=f"Development of ${investment_amount} Investment in {ticker_symbol} Since {investment_date_full.strftime('%Y-%m-%d')}"
-    )
-    fig_investment.update_yaxes(title_text="Estimated Investment Value ($)")
-    st.plotly_chart(fig_investment, use_container_width=True)
+        # Only valid trading dates
+        available_dates = data.index.normalize().unique()
+        available_dates = available_dates.sort_values(ascending=False)
 
-    # Performance Summary
-    st.subheader("📊 Investment Performance Summary")
-    col1, col2, col3 = st.columns(3)
+        # Sidebar: Investment input
+        st.sidebar.header("Investment Setup")
+        investment_date = st.sidebar.selectbox(
+            "Select Investment Start Date (only trading days):",
+            options=available_dates,
+            format_func=lambda x: x.strftime("%Y-%m-%d")
+        )
 
-    col1.metric("Initial Price", f"${initial_price:.2f}")
-    col2.metric("Final Price", f"${final_price:.2f}")
-    col3.metric("Total Return", f"{total_return_pct:.2f}%")
+        investment_amount = st.sidebar.number_input("Investment Amount ($)", min_value=100, step=100, value=1000)
 
-    col4, col5, col6 = st.columns(3)
-    col4.metric("Current Value", f"${final_value:.2f}")
-    col5.metric("Total Gain", f"${total_gain:.2f}")
-    col6.metric("Annualized Return", f"{annualized_return_pct:.2f}%")
+        # Calculate investment performance
+        close_col = "Close"
+        initial_price = data.loc[investment_date, close_col]
+        data['Value'] = (data[close_col] / initial_price) * investment_amount
+        final_price = data[close_col].iloc[-1]
+        final_value = data['Value'].iloc[-1]
+
+        total_return_pct = ((final_price - initial_price) / initial_price) * 100
+        total_gain = final_value - investment_amount
+        num_days = (data.index[-1] - investment_date).days
+        annualized_return_pct = ((final_value / investment_amount) ** (365 / num_days) - 1) * 100 if num_days > 0 else 0.0
+
+        # Price chart
+        fig_price = px.line(data, x=data.index, y=close_col, title=f"{ticker_symbol} Closing Price")
+        fig_price.update_yaxes(title_text="Price ($)")
+        st.plotly_chart(fig_price, use_container_width=True)
+
+        # Investment value chart
+        fig_investment = px.line(
+            data,
+            x=data.index,
+            y='Value',
+            title=f"Development of ${investment_amount} Investment in {ticker_symbol} Since {investment_date.date()}"
+        )
+        fig_investment.update_yaxes(title_text="Estimated Investment Value ($)")
+        st.plotly_chart(fig_investment, use_container_width=True)
+
+        # Performance metrics
+        st.subheader("📊 Investment Performance Summary")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Initial Price", f"${initial_price:.2f}")
+        col2.metric("Final Price", f"${final_price:.2f}")
+        col3.metric("Total Return", f"{total_return_pct:.2f}%")
+
+        col4, col5, col6 = st.columns(3)
+        col4.metric("Current Value", f"${final_value:.2f}")
+        col5.metric("Total Gain", f"${total_gain:.2f}")
+        col6.metric("Annualized Return", f"{annualized_return_pct:.2f}%")
+
+else:
+    st.info("Please select a stock to begin.")
 
 
