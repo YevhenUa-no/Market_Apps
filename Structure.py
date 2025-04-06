@@ -1,5 +1,9 @@
 import streamlit as st
+import yfinance as yf
 import pandas as pd
+import plotly.express as px
+from datetime import datetime, timedelta  # Ensure this line is present
+import io
 
 # --- Function to load tickers from NASDAQ and return Symbol and Security Name ---
 @st.cache_data
