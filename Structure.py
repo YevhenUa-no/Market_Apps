@@ -80,7 +80,35 @@ if ticker_symbol:
             st.sidebar.error("Error: Start date cannot be after end date.")
             st.stop()
     else:
-        period = time_options[selected_time]
+        if period:
+            if period == "1d":
+                duration = pd.Timedelta(days=1)
+            elif period == "5d":
+                duration = pd.Timedelta(days=5)
+            elif period == "1mo":
+                duration = pd.DateOffset(months=1)
+            elif period == "3mo":
+                duration = pd.DateOffset(months=3)
+            elif period == "6mo":
+                duration = pd.DateOffset(months=6)
+            elif period == "1y":
+                duration = pd.DateOffset(years=1)
+            elif period == "2y":
+                duration = pd.DateOffset(years=2)
+            elif period == "5y":
+                duration = pd.DateOffset(years=5)
+            elif period == "10y":
+                duration = pd.DateOffset(years=10)
+            elif period == "ytd":
+                start_date = datetime(today.year, 1, 1).date()
+            elif period == "max":
+                start_date = None # Handled by yfinance
+            else:
+                duration = pd.Timedelta(days=30) # Default to 30 days if unknown
+            if period != "ytd" and period != "max":
+                start_date = today - duration
+        else:
+            start_date = investment_date # Default to investment date if no period selected
 
     # Adjust start date if investment date is later than selected start
     if isinstance(investment_date_str, datetime):
@@ -90,15 +118,6 @@ if ticker_symbol:
 
     if start_date and investment_date > start_date:
         start_date = investment_date
-    elif period == "max":
-        pass # Use the earliest available data
-    elif not start_date:
-        # Calculate start date based on selected period relative to today
-        if period:
-            duration = pd.Timedelta(yf.utils.period_to_timedelta(period))
-            start_date = today - duration
-        else:
-            start_date = investment_date # Default to investment date if no period selected
 
     # Fetch Data
     data = None
