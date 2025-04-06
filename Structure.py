@@ -190,7 +190,10 @@ if ticker_symbol:
 
             if investment_date_full.date() >= data.index.min().date() and investment_date_full.date() <= data.index.max().date():
                 initial_price_full = data.loc[investment_date_full, ('Close', ticker_symbol)]
-                data['Value'] = (data.loc[:, ('Close', ticker_symbol)] / initial_price_full) * investment_amount
+                # Calculate 'Value'
+                value_series = (data.loc[:, ('Close', ticker_symbol)] / initial_price_full) * investment_amount
+                # Explicitly create a single-level 'Value' column
+                data['Value'] = value_series
                 fig_investment_full = px.line(data, x=data.index, y='Value',
                                                 title=f"Development of ${investment_amount} Investment in {ticker_symbol} Since {investment_date_full.strftime('%Y-%m-%d')}")
                 fig_investment_full.update_yaxes(title_text="Estimated Investment Value ($)")
