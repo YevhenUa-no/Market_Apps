@@ -35,7 +35,7 @@ def search_entities(query, all_entities):
     return sorted(results)
 
 st.title("Stock Performance Dashboard")
-st.markdown("Select a ticker by searching its symbol or company name.")
+st.markdown("Select a ticker or search by symbol or company name.")
 
 # Sidebar for Stock Selection
 st.sidebar.header("Stock Selection")
@@ -43,20 +43,30 @@ st.sidebar.header("Stock Selection")
 # Load entities from NASDAQ
 all_available_entities = load_nasdaq_entities()
 
-# Only Search by Name option
-search_query = st.sidebar.text_input("Enter Ticker Symbol or Company Name", "")
+# Option to select from a dropdown or search
+select_option = st.sidebar.radio("Select Ticker By:", ["Dropdown", "Search by Name"])
+
 ticker_symbol = None
 
-if search_query:
-    search_results = search_entities(search_query, all_available_entities)
-    if search_results:
-        selected_entity = st.sidebar.selectbox("Search Results", search_results, format_func=lambda x: f"{x[0]}")
+if select_option == "Dropdown":
+    if all_available_entities:
+        selected_entity = st.sidebar.selectbox("Select Ticker", all_available_entities, format_func=lambda x: f"{x[0]}")
         if selected_entity:
             ticker_symbol = selected_entity[1]
     else:
-        st.sidebar.info("No tickers found matching your search on NASDAQ.")
-else:
-    st.sidebar.info("Try typing a ticker symbol or company name to search NASDAQ listings.")
+        st.sidebar.warning("Could not load tickers for the dropdown.")
+elif select_option == "Search by Name":
+    search_query = st.sidebar.text_input("Enter Ticker Symbol or Company Name", "")
+    if search_query:
+        search_results = search_entities(search_query, all_available_entities)
+        if search_results:
+            selected_entity = st.sidebar.selectbox("Search Results", search_results, format_func=lambda x: f"{x[0]}")
+            if selected_entity:
+                ticker_symbol = selected_entity[1]
+        else:
+            st.sidebar.info("No tickers found matching your search on NASDAQ.")
+    else:
+        st.sidebar.info("Try typing a ticker symbol or company name to search NASDAQ listings.")
 
 # Sidebar for Time Period Selection (Only show if a ticker is selected)
 if ticker_symbol:
@@ -168,7 +178,5 @@ if ticker_symbol:
     else:
         st.info("Try typing a ticker symbol or company name to search NASDAQ listings.")
 
-st.markdown("---")
-st.markdown("Data source: [NASDAQ Trader](ftp://ftp.nasdaqtrader.com/symboldirectory/) and [Yahoo Finance](https://pypi.org/project/yfinance/)")
 st.markdown("---")
 st.markdown("Data source: [NASDAQ Trader](ftp://ftp.nasdaqtrader.com/symboldirectory/) and [Yahoo Finance](https://pypi.org/project/yfinance/)")
