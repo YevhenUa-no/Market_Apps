@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, timedelta  # Ensure this line is present
+from datetime import datetime, timedelta
 import io
 
 # --- Function to load tickers from NASDAQ and return Symbol and Security Name ---
@@ -14,11 +14,9 @@ def load_nasdaq_entities():
         print("Columns in the loaded DataFrame:", response.columns) # Debugging line
         if 'Symbol' in response.columns and 'Security Name' in response.columns:
             entities_df = response[['Symbol', 'Security Name']].copy()
-            # Remove rows where 'Symbol' or 'Security Name' is NaN or empty
             entities_df = entities_df.dropna(subset=['Symbol', 'Security Name'])
             entities_df = entities_df[entities_df['Symbol'].str.isalpha() & (entities_df['Symbol'] != '')]
             entities_df = entities_df[entities_df['Security Name'].str.strip() != '']
-            # Create a combined identifier for the dropdown
             entities_df['Identifier'] = entities_df['Symbol'] + ' - ' + entities_df['Security Name']
             return sorted(entities_df[['Identifier', 'Symbol']].values.tolist())
         else:
@@ -37,43 +35,30 @@ def search_entities(query, all_entities):
     return sorted(results)
 
 st.title("Stock Performance Dashboard")
-st.markdown("Select a ticker or search by symbol or company name.")
+st.markdown("Select a ticker by searching its symbol or company name.")
 
-# Sidebar for Entity Selection
+# Sidebar for Stock Selection
 st.sidebar.header("Stock Selection")
 
 # Load entities from NASDAQ
 all_available_entities = load_nasdaq_entities()
 
-# Option to select from a dropdown or search
-select_option = st.sidebar.radio("Select Ticker By:", ["Dropdown", "Search by Name"])
-
+# Only Search by Name option
+search_query = st.sidebar.text_input("Enter Ticker Symbol or Company Name", "")
 ticker_symbol = None
 
-if select_option == "Dropdown":
-    if all_available_entities:
-        selected_entity = st.sidebar.selectbox("Select Ticker", all_available_entities, format_func=lambda x: f"{x[0]}")
+if search_query:
+    search_results = search_entities(search_query, all_available_entities)
+    if search_results:
+        selected_entity = st.sidebar.selectbox("Search Results", search_results, format_func=lambda x: f"{x[0]}")
         if selected_entity:
             ticker_symbol = selected_entity[1]
     else:
-        st.sidebar.warning("Could not load tickers for the dropdown.")
-elif select_option == "Search by Name":
-    search_query = st.sidebar.text_input("Enter Ticker Symbol or Company Name", "")
-    if search_query:
-        search_results = search_entities(search_query, all_available_entities)
-        if search_results:
-            selected_entity = st.sidebar.selectbox("Search Results", search_results, format_func=lambda x: f"{x[0]}")
-            if selected_entity:
-                ticker_symbol = selected_entity[1]
-        else:
-            st.sidebar.info("No tickers found matching your search on NASDAQ.")
-    else:
-        st.sidebar.info("Try typing a ticker symbol or company name to search NASDAQ listings.")
+        st.sidebar.info("No tickers found matching your search on NASDAQ.")
+else:
+    st.sidebar.info("Try typing a ticker symbol or company name to search NASDAQ listings.")
 
-# --- Rest of your Streamlit app code for time period selection and data display ---
-# ... (Keep the rest of your code for time period selection, fetching data with yfinance,
-#      plotting, and displaying metrics. The 'ticker_symbol' variable will now hold
-#      the selected ticker symbol from the dropdown or search.)
+# Sidebar for Time Period Selection (Only show if a ticker is selected)
 if ticker_symbol:
     st.sidebar.header("Time Period")
     time_options = {
@@ -123,11 +108,37 @@ if ticker_symbol:
         elif data is not None and not data.empty:
             st.dataframe(data)
 
-            # Price Chart
-            st.subheader(f"{ticker_symbol} Closing Price")
+            # Price Chart with Selection
+            st.subheader(f"{ticker_symbol} Closing Price and Return Analysis")
             close_prices = data[('Close', ticker_symbol)]
             fig_price = px.line(data, x=data.index, y=close_prices, title=f"{ticker_symbol} Closing Price Over Time")
-            st.plotly_chart(fig_price, use_container_width=True)
+            # Enable selection
+            fig_price.update_layout(dragmode='select', selectdirection='h')
+            chart = st.plotly_chart(fig_price, use_container_width=True, key="price_chart")
+
+            selected_points = st.session_state.get("price_chart_selection")
+
+            if selected_points and len(selected_points['range']['x']) == 2:
+                start_date_selected = datetime.strptime(selected_points['range']['x'][0].split(' ')[0], '%Y-%m-%d').date()
+                end_date_selected = datetime.strptime(selected_points['range']['x'][1].split(' ')[0], '%Y-%m-%d').date()
+
+                selected_data = data[(data.index.date >= start_date_selected) & (data.index.date <= end_date_selected)]
+
+                if not selected_data.empty and len(selected_data) > 1:
+                    start_price_selected = selected_data[('Close', ticker_symbol)].iloc[0]
+                    end_price_selected = selected_data[('Close', ticker_symbol)].iloc[-1]
+                    price_change_selected = end_price_selected - start_price_selected
+                    percent_change_selected = (price_change_selected / start_price_selected) * 100
+
+                    st.subheader("Return Analysis (Selected Period)")
+                    st.metric("Start Price", f"{start_price_selected:.2f}", delta=None)
+                    st.metric("End Price", f"{end_price_selected:.2f}", delta=f"{price_change_selected:.2f}")
+                    st.metric("Percentage Return", f"{percent_change_selected:.2f}%", delta=None)
+                else:
+                    st.info("Select a valid range on the chart to analyze the return.")
+            else:
+                st.info("Drag to select a range on the closing price chart to see return analysis for that period.")
+
 
             # Volume Chart (Optional)
             show_volume = st.checkbox("Show Volume Chart")
@@ -137,8 +148,8 @@ if ticker_symbol:
                 fig_volume = px.bar(data, x=data.index, y=volume_data, title=f"{ticker_symbol} Trading Volume Over Time")
                 st.plotly_chart(fig_volume, use_container_width=True)
 
-            # Calculate and Display Performance Metrics
-            st.subheader("Performance Metrics")
+            # Calculate and Display Overall Performance Metrics
+            st.subheader("Overall Performance Metrics")
             if len(data) > 1:
                 start_price = data[('Close', ticker_symbol)].iloc[0]
                 end_price = data[('Close', ticker_symbol)].iloc[-1]
@@ -150,15 +161,14 @@ if ticker_symbol:
                 st.metric("Price Change", f"{price_change:.2f}")
                 st.metric("Percentage Change", f"{percent_change:.2f}%")
             else:
-                st.info("Not enough data points to calculate performance metrics for the selected period.")
+                st.info("Not enough data points to calculate overall performance metrics for the selected period.")
 
         elif period or start_date:
             st.info(f"No data available for {ticker_symbol} for the selected time period.")
     else:
-        st.info("Please select a ticker symbol in the sidebar.")
+        st.info("Try typing a ticker symbol or company name to search NASDAQ listings.")
 
 st.markdown("---")
 st.markdown("Data source: [NASDAQ Trader](ftp://ftp.nasdaqtrader.com/symboldirectory/) and [Yahoo Finance](https://pypi.org/project/yfinance/)")
-
 st.markdown("---")
 st.markdown("Data source: [NASDAQ Trader](ftp://ftp.nasdaqtrader.com/symboldirectory/) and [Yahoo Finance](https://pypi.org/project/yfinance/)")
