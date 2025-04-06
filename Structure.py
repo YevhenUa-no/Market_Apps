@@ -3,133 +3,99 @@ import yfinance as yf
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-import numpy as np
 
-# Title and Sidebar Setup
-st.title("📊 Stock Portfolio Analysis")
+st.set_page_config(page_title="📈 Stock Investment Tracker", layout="wide")
 
-# Sidebar Inputs
-ticker_symbol = st.sidebar.text_input("Enter Stock Ticker (e.g. AAPL)", "AAPL")
-start_date = st.sidebar.date_input("Start Date", datetime(2010, 1, 1))
-end_date = st.sidebar.date_input("End Date", datetime.today())
+# Title
+st.title("📈 Stock Investment Dashboard")
 
-# Load Data
-data = yf.download(ticker_symbol, start=start_date, end=end_date)
+# Sidebar: Ticker input
+st.sidebar.header("Select Stock")
+try:
+    tickers_list = yf.Tickers("AAPL MSFT NVDA TSLA AMZN META GOOGL NFLX BA KO JPM V").tickers
+    ticker_names = sorted(tickers_list.keys())
+    ticker_symbol = st.sidebar.selectbox("Choose a stock", ticker_names)
+except:
+    st.sidebar.warning("Could not load tickers for the dropdown.")
+    ticker_symbol = None
 
-# Close Column Selection
-close_col = 'Close'
+if ticker_symbol:
+    ticker = yf.Ticker(ticker_symbol)
+    data = ticker.history(period="2y")
 
-# Display Stock Data
-st.subheader(f"Stock Data for {ticker_symbol}")
-st.dataframe(data.tail())
+    if data.empty:
+        st.warning("No data available for the selected ticker.")
+    else:
+        data = data.dropna()
+        data.index = pd.to_datetime(data.index)
 
-# 📈 Closing Price Plot
-st.subheader(f"📉 {ticker_symbol} Closing Price Over Time")
-fig = px.line(data, x=data.index, y=close_col, title=f"{ticker_symbol} Closing Price")
-fig.update_yaxes(title_text="Price ($)")
-st.plotly_chart(fig, use_container_width=True)
+        # Only valid trading dates
+        available_dates = data.index.normalize().unique()
+        available_dates = available_dates.sort_values(ascending=False)
 
-# 📆 Monthly Investment Growth Over Time
-st.subheader("📆 Monthly Investment Growth Over Time")
+        # Sidebar: Investment input
+        st.sidebar.header("Investment Setup")
+        investment_date = st.sidebar.selectbox(
+            "Select Initial Investment Date (only trading days):",
+            options=available_dates,
+            format_func=lambda x: x.strftime("%Y-%m-%d")
+        )
 
-# Monthly Investment Input
-monthly_amount = st.number_input("Enter Monthly Investment Amount ($)", value=1000, step=100)
+        initial_investment_amount = st.sidebar.number_input("Initial Investment Amount ($)", min_value=100, step=100, value=1000)
+        monthly_investment_amount = st.sidebar.number_input("Monthly Investment Amount ($)", min_value=10, step=10, value=200)
 
-# Get list of monthly dates to invest
-monthly_dates = pd.date_range(start=start_date, end=end_date, freq='MS').date
+        close_col = "Close"
 
-# Build investment over time
-investment_tracker = pd.DataFrame(index=data.index)
-investment_tracker['Total Shares'] = 0
-investment_tracker['Invested Amount'] = 0
-investment_tracker['Value'] = 0
+        # --- Scenario 1: Invest Whole Sum Initially ---
+        initial_price_full = data.loc[investment_date, close_col]
+        data['FullSumValue'] = (data[close_col] / initial_price_full) * (initial_investment_amount + (monthly_investment_amount * (len(data.resample("MS").first().index[data.resample("MS").first().index >= pd.to_datetime(investment_date)]))))
+        final_value_full = data['FullSumValue'].iloc[-1]
 
-total_shares = 0
-total_invested = 0
-markers = []
+        # --- Scenario 2: Invest Part Monthly ---
+        investment_dates = pd.to_datetime(data.resample("MS").first().index)
+        investment_dates = investment_dates[investment_dates >= pd.to_datetime(investment_date)]
+        investment_schedule = {date.strftime("%Y-%m-%d"): monthly_investment_amount for date in investment_dates}
+        investment_schedule[investment_date.strftime("%Y-%m-%d")] = investment_schedule.get(investment_date.strftime("%Y-%m-%d"), 0) + initial_investment_amount
 
-for dt in monthly_dates:
-    if dt in data.index:
-        buy_price = data.loc[dt, close_col]
-        shares_bought = monthly_amount / buy_price
-        total_shares += shares_bought
-        total_invested += monthly_amount
-        markers.append(dt)
-    investment_tracker.loc[dt:, 'Total Shares'] = total_shares
-    investment_tracker.loc[dt:, 'Invested Amount'] = total_invested
-    investment_tracker['Value'] = investment_tracker['Total Shares'] * data[close_col]
+        portfolio_value_monthly = pd.Series(index=data.index, dtype=float)
+        total_shares_monthly = 0
 
-# Plot total investment value over time
-fig_dca = px.line(
-    investment_tracker,
-    x=investment_tracker.index,
-    y='Value',
-    title="Total Value of Monthly Investments Over Time"
-)
+        for date, price in data[close_col].items():
+            investment_on_date = investment_schedule.get(date.strftime("%Y-%m-%d"), 0)
+            if investment_on_date > 0:
+                shares_bought = investment_on_date / price
+                total_shares_monthly += shares_bought
+            portfolio_value_monthly[date] = total_shares_monthly * price
 
-# Add markers for each investment date
-fig_dca.add_scatter(
-    x=markers,
-    y=investment_tracker.loc[markers, 'Value'],
-    mode='markers',
-    marker=dict(color='red', size=8, symbol='circle'),
-    name='Investment Days'
-)
+        portfolio_df_monthly = pd.DataFrame({'Value': portfolio_value_monthly})
+        portfolio_df_monthly = portfolio_df_monthly.dropna()
+        final_value_monthly = portfolio_df_monthly['Value'].iloc[-1] if not portfolio_df_monthly.empty else 0
 
-fig_dca.update_yaxes(title_text="Total Portfolio Value ($)")
-st.plotly_chart(fig_dca, use_container_width=True)
+        # --- Comparison Chart ---
+        comparison_df = pd.DataFrame({
+            'Date': data.index,
+            'Invest Full Sum Initially': data['FullSumValue'],
+            'Invest Part Monthly': portfolio_df_monthly['Value'].reindex(data.index, method='pad')
+        })
 
-# Summary of monthly investing
-total_current_value = investment_tracker['Value'].iloc[-1]
-st.markdown(f"**Total Invested via Monthly Contributions:** ${total_invested:,.2f}")
-st.markdown(f"**Current Value of Monthly Investments:** ${total_current_value:,.2f}")
-st.markdown(f"**Total Gain:** ${total_current_value - total_invested:,.2f} ({((total_current_value / total_invested - 1)*100):.2f}%)")
+        fig_comparison = px.line(comparison_df, x='Date', y=['Invest Full Sum Initially', 'Invest Part Monthly'],
+                               title="Comparison: Investing Full Sum Initially vs. Part Monthly")
+        fig_comparison.update_yaxes(title_text="Portfolio Value ($)")
+        st.plotly_chart(fig_comparison, use_container_width=True)
 
-# 📉 Historical Performance
-st.subheader(f"📈 {ticker_symbol} Performance Analysis")
-st.markdown("This section compares the performance of your investments to the stock's historical performance.")
+        # --- Comparison Summary ---
+        st.subheader("💰 Comparison Summary")
+        col1, col2 = st.columns(2)
+        col1.metric("Final Value (Invest Full Sum Initially)", f"${final_value_full:,.2f}")
+        col2.metric("Final Value (Invest Part Monthly)", f"${final_value_monthly:,.2f}")
 
-# Calculate Returns on Investment
-returns = data['Close'].pct_change()
-investment_returns = investment_tracker['Value'].pct_change().fillna(0)
+        initial_total_investment = initial_investment_amount
+        total_monthly_contributions = monthly_investment_amount * (len(investment_dates) - 1) if len(investment_dates) > 1 else 0
+        total_invested_monthly = initial_total_investment + total_monthly_contributions
 
-# Create a DataFrame for comparison
-comparison_df = pd.DataFrame({
-    'Date': data.index,
-    'Stock Return': returns,
-    'Investment Return': investment_returns
-})
+        col3, col4 = st.columns(2)
+        col3.metric("Total Invested (Full Sum)", f"${initial_total_investment + total_monthly_contributions:,.2f}")
+        col4.metric("Total Invested (Part Monthly)", f"${total_invested_monthly:,.2f}")
 
-# Plot performance comparison
-fig_comparison = px.line(comparison_df, x='Date', y=['Stock Return', 'Investment Return'], title="Stock vs. Investment Return")
-fig_comparison.update_yaxes(title_text="Return (%)")
-st.plotly_chart(fig_comparison, use_container_width=True)
-
-# 📈 Performance Measures for Stock vs Investment
-st.subheader("📊 Performance Measures")
-
-# Annualized Returns for Stock vs Investment
-annualized_stock_return = (1 + returns.mean())**252 - 1
-annualized_investment_return = (1 + investment_returns.mean())**252 - 1
-
-# Volatility (Standard Deviation)
-stock_volatility = returns.std() * np.sqrt(252)
-investment_volatility = investment_returns.std() * np.sqrt(252)
-
-# Sharpe Ratio
-risk_free_rate = 0.02  # Assume a 2% risk-free rate
-stock_sharpe = (annualized_stock_return - risk_free_rate) / stock_volatility
-investment_sharpe = (annualized_investment_return - risk_free_rate) / investment_volatility
-
-# Display Performance Measures
-st.markdown(f"**Stock Annualized Return:** {annualized_stock_return * 100:.2f}%")
-st.markdown(f"**Investment Annualized Return:** {annualized_investment_return * 100:.2f}%")
-st.markdown(f"**Stock Volatility (Annualized):** {stock_volatility * 100:.2f}%")
-st.markdown(f"**Investment Volatility (Annualized):** {investment_volatility * 100:.2f}%")
-st.markdown(f"**Stock Sharpe Ratio:** {stock_sharpe:.2f}")
-st.markdown(f"**Investment Sharpe Ratio:** {investment_sharpe:.2f}")
-
-# Display Option to Show Data Table
-if st.checkbox("Show Investment Data Table"):
-    st.subheader("Investment Tracker Data")
-    st.dataframe(investment_tracker.tail())
+else:
+    st.info("Please select a stock to begin.")
