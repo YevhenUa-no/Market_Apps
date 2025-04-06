@@ -78,6 +78,7 @@ if ticker_symbol:
         total_investment_full = initial_investment_amount + (monthly_investment_amount * num_months)
         data['FullSumValue'] = (data[close_col] / initial_price_full) * total_investment_full
         final_value_full = data['FullSumValue'].iloc[-1]
+        return_full_pct = ((final_value_full / total_investment_full) - 1) * 100 if total_investment_full > 0 else 0
 
         # --- Scenario 2: Invest Part Monthly ---
         investment_dates = pd.to_datetime(data.resample("MS").first().index)
@@ -87,17 +88,20 @@ if ticker_symbol:
 
         portfolio_value_monthly = pd.Series(index=data.index, dtype=float)
         total_shares_monthly = 0
+        total_invested_monthly = 0
 
         for date, price in data[close_col].items():
             investment_on_date = investment_schedule.get(date.strftime("%Y-%m-%d"), 0)
             if investment_on_date > 0:
                 shares_bought = investment_on_date / price
                 total_shares_monthly += shares_bought
+                total_invested_monthly += investment_on_date
             portfolio_value_monthly[date] = total_shares_monthly * price
 
         portfolio_df_monthly = pd.DataFrame({'Value': portfolio_value_monthly})
         portfolio_df_monthly = portfolio_df_monthly.dropna()
         final_value_monthly = portfolio_df_monthly['Value'].iloc[-1] if not portfolio_df_monthly.empty else 0
+        return_monthly_pct = ((final_value_monthly / total_invested_monthly) - 1) * 100 if total_invested_monthly > 0 else 0
 
         # --- Comparison Chart ---
         comparison_df = pd.DataFrame({
@@ -113,17 +117,15 @@ if ticker_symbol:
 
         # --- Comparison Summary ---
         st.subheader("💰 Comparison Summary")
-        col1, col2 = st.columns(2)
-        col1.metric("Final Value (Invest Full Sum Initially)", f"${final_value_full:,.2f}")
-        col2.metric("Final Value (Invest Part Monthly)", f"${final_value_monthly:,.2f}")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Final Value (Full Sum)", f"${final_value_full:,.2f}")
+        col2.metric("Return (Full Sum)", f"{return_full_pct:.2f}%")
+        col3.metric("Total Invested (Full Sum)", f"${total_investment_full:,.2f}")
 
-        initial_total_investment = initial_investment_amount
-        total_monthly_contributions = monthly_investment_amount * (len(investment_dates) - 1) if len(investment_dates) > 1 else 0
-        total_invested_monthly = initial_total_investment + total_monthly_contributions
-
-        col3, col4 = st.columns(2)
-        col3.metric("Total Invested (Full Sum)", f"${initial_total_investment + total_monthly_contributions:,.2f}")
-        col4.metric("Total Invested (Part Monthly)", f"${total_invested_monthly:,.2f}")
+        col4, col5, col6 = st.columns(3)
+        col4.metric("Final Value (Part Monthly)", f"${final_value_monthly:,.2f}")
+        col5.metric("Return (Part Monthly)", f"{return_monthly_pct:.2f}%")
+        col6.metric("Total Invested (Part Monthly)", f"${total_invested_monthly:,.2f}")
 
 else:
     st.info("Please select a stock to begin.")
