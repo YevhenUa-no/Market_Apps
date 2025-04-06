@@ -6,16 +6,42 @@ from datetime import datetime
 
 st.set_page_config(page_title="📈 Stock Investment Tracker", layout="wide")
 
+# --- Function to load tickers from NASDAQ and return Symbol and Security Name ---
+@st.cache_data
+def load_nasdaq_entities():
+    url = "ftp://ftp.nasdaqtrader.com/SymbolDirectory/nasdaqlisted.txt"
+    try:
+        response = pd.read_csv(url, sep="|")
+        print("Columns in the loaded DataFrame:", response.columns) # Debugging line
+        if 'Symbol' in response.columns and 'Security Name' in response.columns:
+            entities_df = response[['Symbol', 'Security Name']].copy()
+            entities_df = entities_df.dropna(subset=['Symbol', 'Security Name'])
+            entities_df = entities_df[entities_df['Symbol'].str.isalpha() & (entities_df['Symbol'] != '')]
+            entities_df = entities_df[entities_df['Security Name'].str.strip() != '']
+            entities_df['Identifier'] = entities_df['Symbol'] + ' - ' + entities_df['Security Name']
+            return sorted(entities_df[['Identifier', 'Symbol']].values.tolist())
+        else:
+            st.error("Error: 'Symbol' and/or 'Security Name' column not found in NASDAQ data.")
+            return []
+    except Exception as e:
+        st.error(f"Failed to load entities from NASDAQ Trader: {e}")
+        return []
+
 # Title
 st.title("📈 Stock Investment Dashboard")
 
-# Sidebar: Ticker input
+# Sidebar: Stock Selection
 st.sidebar.header("Select Stock")
-try:
-    tickers_list = yf.Tickers("AAPL MSFT NVDA TSLA AMZN META GOOGL NFLX BA KO JPM V").tickers
-    ticker_names = sorted(tickers_list.keys())
-    ticker_symbol = st.sidebar.selectbox("Choose a stock", ticker_names)
-except:
+all_available_entities = load_nasdaq_entities()
+
+if all_available_entities:
+    selected_entity = st.sidebar.selectbox("Choose a stock", all_available_entities, format_func=lambda x: f"{x[0]}")
+    if selected_entity:
+        ticker_symbol = selected_entity[1]
+    else:
+        st.sidebar.warning("Could not load tickers for the dropdown.")
+        ticker_symbol = None
+else:
     st.sidebar.warning("Could not load tickers for the dropdown.")
     ticker_symbol = None
 
@@ -48,7 +74,9 @@ if ticker_symbol:
 
         # --- Scenario 1: Invest Whole Sum Initially ---
         initial_price_full = data.loc[investment_date, close_col]
-        data['FullSumValue'] = (data[close_col] / initial_price_full) * (initial_investment_amount + (monthly_investment_amount * (len(data.resample("MS").first().index[data.resample("MS").first().index >= pd.to_datetime(investment_date)]))))
+        num_months = (data.index[-1].year - investment_date.year) * 12 + (data.index[-1].month - investment_date.month)
+        total_investment_full = initial_investment_amount + (monthly_investment_amount * num_months)
+        data['FullSumValue'] = (data[close_col] / initial_price_full) * total_investment_full
         final_value_full = data['FullSumValue'].iloc[-1]
 
         # --- Scenario 2: Invest Part Monthly ---
