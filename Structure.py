@@ -27,7 +27,7 @@ def load_nasdaq_entities():
         return []
 
 st.title("Stock Performance Dashboard")
-st.markdown("Select a ticker from the dropdown.")
+st.markdown("Select a ticker from the dropdown and analyze its performance.")
 
 # Sidebar for Stock Selection
 st.sidebar.header("Stock Selection")
@@ -40,41 +40,65 @@ if all_available_entities:
     selected_entity = st.sidebar.selectbox("Select Ticker", all_available_entities, format_func=lambda x: f"{x[0]}")
     if selected_entity:
         ticker_symbol = selected_entity[1]
+    else:
+        st.sidebar.warning("Could not load tickers for the dropdown.")
+        ticker_symbol = None
 else:
     st.sidebar.warning("Could not load tickers for the dropdown.")
     ticker_symbol = None
 
+# Sidebar for Investment Analysis
+st.sidebar.header("Investment Analysis")
+investment_date_str = st.sidebar.date_input("Investment Date", datetime(2024, 1, 1).date())
+investment_amount = st.sidebar.number_input("Investment Amount", min_value=1.0, value=1000.0, step=100.0)
+
 # Sidebar for Time Period Selection (Only show if a ticker is selected)
 if ticker_symbol:
     st.sidebar.header("Time Period")
+    today = datetime(2025, 4, 6).date()  # Using today's date as per the context
     time_options = {
-        "1 Day": "1d",
-        "5 Days": "5d",
         "1 Month": "1mo",
         "3 Months": "3mo",
         "6 Months": "6mo",
         "1 Year": "1y",
         "2 Years": "2y",
         "5 Years": "5y",
-        "10 Years": "10y",
-        "Year-to-Date": "ytd",
         "Max": "max",
         "Custom": "custom",
     }
-    selected_time = st.sidebar.selectbox("Select Time Period", list(time_options.keys()), index=6)
+    default_index = 3  # Default to 1 Year
+    selected_time = st.sidebar.selectbox("Select Time Period", list(time_options.keys()), index=default_index)
 
     start_date = None
-    end_date = datetime.now().date()
+    end_date = today
     period = None
 
     if selected_time == "Custom":
-        start_date = st.sidebar.date_input("Start Date", datetime.now().date() - timedelta(days=365))
-        end_date = st.sidebar.date_input("End Date", datetime.now().date())
+        start_date = st.sidebar.date_input("Start Date", today - timedelta(days=365))
+        end_date = st.sidebar.date_input("End Date", today)
         if start_date > end_date:
             st.sidebar.error("Error: Start date cannot be after end date.")
             st.stop()
     else:
         period = time_options[selected_time]
+
+    # Adjust start date if investment date is later than selected start
+    if isinstance(investment_date_str, datetime):
+        investment_date = investment_date_str.date()
+    else:
+        investment_date = investment_date_str
+
+    if start_date and investment_date > start_date:
+        start_date = investment_date
+    elif period == "max":
+        pass # Use the earliest available data
+    elif not start_date:
+        # Calculate start date based on selected period relative to today
+        if period:
+            duration = pd.Timedelta(yf.utils.period_to_timedelta(period))
+            start_date = today - duration
+        else:
+            start_date = investment_date # Default to investment date if no period selected
 
     # Fetch Data
     data = None
@@ -82,10 +106,10 @@ if ticker_symbol:
 
     st.subheader(f"Performance of {ticker_symbol}")
 
-    if period or start_date:
+    if start_date and end_date:
         with st.spinner(f"Fetching data for {ticker_symbol}..."):
             try:
-                data = yf.download(ticker_symbol, start=start_date, end=end_date) if selected_time == "Custom" else yf.download(ticker_symbol, period=period)
+                data = yf.download(ticker_symbol, start=start_date, end=end_date)
             except Exception as e:
                 error_message = f"An error occurred while fetching data for {ticker_symbol}: {e}"
 
@@ -125,6 +149,22 @@ if ticker_symbol:
             else:
                 st.info("Drag to select a range on the closing price chart to see return analysis for that period.")
 
+            # Investment Development Analysis
+            st.subheader("Investment Development")
+            investment_date = pd.to_datetime(investment_date_str)
+
+            if investment_date.date() >= data.index.min().date() and investment_date.date() <= data.index.max().date():
+                initial_price = data.loc[investment_date]['Close']
+                investment_timeline = data[data.index >= investment_date].copy()
+                investment_timeline['Value'] = (investment_timeline['Close'] / initial_price) * investment_amount
+
+                fig_investment = px.line(investment_timeline, x=investment_timeline.index, y='Value',
+                                         title=f"Development of ${investment_amount} Investment in {ticker_symbol}")
+                fig_investment.update_yaxes(title_text="Estimated Investment Value ($)")
+                st.plotly_chart(fig_investment, use_container_width=True)
+            else:
+                st.warning(f"Investment date ({investment_date.date()}) is outside the available data range ({data.index.min().date()} to {data.index.max().date()}).")
+
 
             # Volume Chart (Optional)
             show_volume = st.checkbox("Show Volume Chart")
@@ -149,10 +189,11 @@ if ticker_symbol:
             else:
                 st.info("Not enough data points to calculate overall performance metrics for the selected period.")
 
-        elif period or start_date:
+        elif start_date and end_date:
             st.info(f"No data available for {ticker_symbol} for the selected time period.")
     else:
-        st.info("Could not load tickers for the dropdown.")
+        st.info("Please select a ticker symbol in the sidebar.")
 
 st.markdown("---")
+st.markdown(f"Data as of: {datetime(2025, 4, 6).strftime('%Y-%m-%d')} (Contextual)")
 st.markdown("Data source: [NASDAQ Trader](ftp://ftp.nasdaqtrader.com/symboldirectory/) and [Yahoo Finance](https://pypi.org/project/yfinance/)")
