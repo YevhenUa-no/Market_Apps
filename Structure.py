@@ -74,8 +74,8 @@ if ticker_symbol:
 
         # --- Scenario 1: Invest Whole Sum Initially ---
         initial_price_full = data.loc[investment_date, close_col]
-        num_months = (data.index[-1].year - investment_date.year) * 12 + (data.index[-1].month - investment_date.month)
-        total_investment_full = initial_investment_amount + (monthly_investment_amount * num_months)
+        num_monthly_contributions_full = (data.index[-1].year - investment_date.year) * 12 + (data.index[-1].month - investment_date.month)
+        total_investment_full = initial_investment_amount + (monthly_investment_amount * num_monthly_contributions_full)
         data['FullSumValue'] = (data[close_col] / initial_price_full) * total_investment_full
         final_value_full = data['FullSumValue'].iloc[-1]
         return_full_pct = ((final_value_full / total_investment_full) - 1) * 100 if total_investment_full > 0 else 0
