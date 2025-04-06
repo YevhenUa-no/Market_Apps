@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import plotly.express as px
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 st.set_page_config(page_title="📈 Stock Investment Tracker", layout="wide")
 
@@ -28,14 +28,33 @@ if ticker_symbol:
     else:
         data = data.dropna()
         data.index = pd.to_datetime(data.index)
+        min_date = data.index.min().date()
+        max_date = data.index.max().date()
+        today = date.today()
 
         # Sidebar: Date Selection
         st.sidebar.header("Date Selection")
-        min_date = data.index.min().date()
-        max_date = data.index.max().date()
+        date_option = st.sidebar.radio(
+            "Choose a Timeframe:",
+            ["Custom", "1 Year", "6 Months", "3 Months", "1 Month"],
+            index=0,
+        )
 
-        start_date = st.sidebar.date_input("Investment Start Date", min_value=min_date, max_value=max_date, value=min_date)
-        end_date = st.sidebar.date_input("Analysis End Date", min_value=min_date, max_value=max_date, value=max_date)
+        if date_option == "Custom":
+            start_date = st.sidebar.date_input("Investment Start Date", min_value=min_date, max_value=max_date, value=min_date)
+            end_date = st.sidebar.date_input("Analysis End Date", min_value=min_date, max_value=max_date, value=today)
+        elif date_option == "1 Year":
+            start_date = today - timedelta(days=365)
+            end_date = today
+        elif date_option == "6 Months":
+            start_date = today - timedelta(days=6 * 30)  # Approximate 6 months
+            end_date = today
+        elif date_option == "3 Months":
+            start_date = today - timedelta(days=3 * 30)  # Approximate 3 months
+            end_date = today
+        elif date_option == "1 Month":
+            start_date = today - timedelta(days=30)
+            end_date = today
 
         if start_date > end_date:
             st.sidebar.error("Error: Investment Start Date cannot be after Analysis End Date.")
