@@ -73,6 +73,12 @@ if ticker_symbol:
     end_date = today
     period = None
 
+    # Adjust start date if investment date is later than selected start
+    if isinstance(investment_date_str, datetime):
+        investment_date = investment_date_str.date()
+    else:
+        investment_date = investment_date_str
+
     if selected_time == "Custom":
         start_date = st.sidebar.date_input("Start Date", today - timedelta(days=365))
         end_date = st.sidebar.date_input("End Date", today)
@@ -111,11 +117,6 @@ if ticker_symbol:
             start_date = investment_date # Default to investment date if no period selected
 
     # Adjust start date if investment date is later than selected start
-    if isinstance(investment_date_str, datetime):
-        investment_date = investment_date_str.date()
-    else:
-        investment_date = investment_date_str
-
     if start_date and investment_date > start_date:
         start_date = investment_date
 
