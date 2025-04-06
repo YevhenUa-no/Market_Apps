@@ -3,112 +3,134 @@ import yfinance as yf
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import numpy as np
 
-st.set_page_config(page_title="📈 Stock Investment Tracker", layout="wide")
+# Title and Sidebar Setup
+st.title("📊 Stock Portfolio Analysis")
 
-# Title
-st.title("📈 Stock Investment Dashboard")
+# Sidebar Inputs
+ticker_symbol = st.sidebar.text_input("Enter Stock Ticker (e.g. AAPL)", "AAPL")
+start_date = st.sidebar.date_input("Start Date", datetime(2010, 1, 1))
+end_date = st.sidebar.date_input("End Date", datetime.today())
 
-# Sidebar: Ticker input
-st.sidebar.header("Select Stock")
-try:
-    tickers_list = yf.Tickers("AAPL MSFT NVDA TSLA AMZN META GOOGL NFLX BA KO JPM V").tickers
-    ticker_names = sorted(tickers_list.keys())
-    ticker_symbol = st.sidebar.selectbox("Choose a stock", ticker_names)
-except:
-    st.sidebar.warning("Could not load tickers for the dropdown.")
-    ticker_symbol = None
+# Load Data
+data = yf.download(ticker_symbol, start=start_date, end=end_date)
 
-if ticker_symbol:
-    ticker = yf.Ticker(ticker_symbol)
-    data = ticker.history(period="2y")
-    
-    if data.empty:
-        st.warning("No data available for the selected ticker.")
-    else:
-        data = data.dropna()
-        data.index = pd.to_datetime(data.index)
+# Close Column Selection
+close_col = 'Close'
 
-        # Only valid trading dates
-        available_dates = data.index.normalize().unique()
-        available_dates = available_dates.sort_values(ascending=False)
+# Display Stock Data
+st.subheader(f"Stock Data for {ticker_symbol}")
+st.dataframe(data.tail())
 
-        # Sidebar: Investment input
-        st.sidebar.header("Investment Setup")
-        investment_date = st.sidebar.selectbox(
-            "Select Investment Start Date (only trading days):",
-            options=available_dates,
-            format_func=lambda x: x.strftime("%Y-%m-%d")
-        )
+# 📈 Closing Price Plot
+st.subheader(f"📉 {ticker_symbol} Closing Price Over Time")
+fig = px.line(data, x=data.index, y=close_col, title=f"{ticker_symbol} Closing Price")
+fig.update_yaxes(title_text="Price ($)")
+st.plotly_chart(fig, use_container_width=True)
 
-        investment_amount = st.sidebar.number_input("Lump-Sum Investment Amount ($)", min_value=100, step=100, value=1000)
-        monthly_amount = st.sidebar.number_input("Monthly Investment Amount ($)", min_value=10, step=10, value=200)
+# 📆 Monthly Investment Growth Over Time
+st.subheader("📆 Monthly Investment Growth Over Time")
 
-        # Calculate single investment performance
-        close_col = "Close"
-        initial_price = data.loc[investment_date, close_col]
-        data['Value'] = (data[close_col] / initial_price) * investment_amount
-        final_price = data[close_col].iloc[-1]
-        final_value = data['Value'].iloc[-1]
+# Monthly Investment Input
+monthly_amount = st.number_input("Enter Monthly Investment Amount ($)", value=1000, step=100)
 
-        total_return_pct = ((final_price - initial_price) / initial_price) * 100
-        total_gain = final_value - investment_amount
-        num_days = (data.index[-1] - investment_date).days
-        annualized_return_pct = ((final_value / investment_amount) ** (365 / num_days) - 1) * 100 if num_days > 0 else 0.0
+# Get list of monthly dates to invest
+monthly_dates = pd.date_range(start=start_date, end=end_date, freq='MS').date
 
-        # Investment value chart
-        fig_investment = px.line(
-            data,
-            x=data.index,
-            y='Value',
-            title=f"Development of ${investment_amount} Investment in {ticker_symbol} Since {investment_date.date()}"
-        )
-        fig_investment.update_yaxes(title_text="Estimated Investment Value ($)")
-        st.plotly_chart(fig_investment, use_container_width=True)
+# Build investment over time
+investment_tracker = pd.DataFrame(index=data.index)
+investment_tracker['Total Shares'] = 0
+investment_tracker['Invested Amount'] = 0
+investment_tracker['Value'] = 0
 
-        # 📊 Investment Performance Summary
-        st.subheader("📊 Investment Performance Summary")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Initial Price", f"${initial_price:.2f}")
-        col2.metric("Final Price", f"${final_price:.2f}")
-        col3.metric("Total Return", f"{total_return_pct:.2f}%")
+total_shares = 0
+total_invested = 0
+markers = []
 
-        col4, col5, col6 = st.columns(3)
-        col4.metric("Current Value", f"${final_value:.2f}")
-        col5.metric("Total Gain", f"${total_gain:.2f}")
-        col6.metric("Annualized Return", f"{annualized_return_pct:.2f}%")
+for dt in monthly_dates:
+    if dt in data.index:
+        buy_price = data.loc[dt, close_col]
+        shares_bought = monthly_amount / buy_price
+        total_shares += shares_bought
+        total_invested += monthly_amount
+        markers.append(dt)
+    investment_tracker.loc[dt:, 'Total Shares'] = total_shares
+    investment_tracker.loc[dt:, 'Invested Amount'] = total_invested
+    investment_tracker['Value'] = investment_tracker['Total Shares'] * data[close_col]
 
-        # 📅 Monthly Investment Performance Chart
-        st.subheader("📆 Monthly Investment Comparison")
+# Plot total investment value over time
+fig_dca = px.line(
+    investment_tracker,
+    x=investment_tracker.index,
+    y='Value',
+    title="Total Value of Monthly Investments Over Time"
+)
 
-        monthly_results = []
-        monthly_dates = data.resample("MS").first().index  # first trading day of each month
+# Add markers for each investment date
+fig_dca.add_scatter(
+    x=markers,
+    y=investment_tracker.loc[markers, 'Value'],
+    mode='markers',
+    marker=dict(color='red', size=8, symbol='circle'),
+    name='Investment Days'
+)
 
-        for dt in monthly_dates:
-            if dt in data.index:
-                buy_price = data.loc[dt, close_col]
-                shares_bought = monthly_amount / buy_price
-                value_today = shares_bought * final_price
-                monthly_results.append({
-                    "Month": dt.strftime("%Y-%m"),
-                    "Value Today": round(value_today, 2),
-                    "Buy Price": round(buy_price, 2),
-                    "Shares": round(shares_bought, 4),
-                    "Investment": monthly_amount
-                })
+fig_dca.update_yaxes(title_text="Total Portfolio Value ($)")
+st.plotly_chart(fig_dca, use_container_width=True)
 
-        monthly_df = pd.DataFrame(monthly_results)
-        fig_monthly = px.bar(monthly_df, x="Month", y="Value Today", title="Value Today of Each Monthly Investment")
-        fig_monthly.update_yaxes(title_text="Value Today ($)")
-        st.plotly_chart(fig_monthly, use_container_width=True)
+# Summary of monthly investing
+total_current_value = investment_tracker['Value'].iloc[-1]
+st.markdown(f"**Total Invested via Monthly Contributions:** ${total_invested:,.2f}")
+st.markdown(f"**Current Value of Monthly Investments:** ${total_current_value:,.2f}")
+st.markdown(f"**Total Gain:** ${total_current_value - total_invested:,.2f} ({((total_current_value / total_invested - 1)*100):.2f}%)")
 
-        # Summary of monthly investing
-        total_invested = monthly_df["Investment"].sum()
-        total_current_value = monthly_df["Value Today"].sum()
-        st.markdown(f"**Total Invested via Monthly Contributions:** ${total_invested:,.2f}")
-        st.markdown(f"**Current Value of Monthly Investments:** ${total_current_value:,.2f}")
-        st.markdown(f"**Total Gain:** ${total_current_value - total_invested:,.2f} ({((total_current_value / total_invested - 1)*100):.2f}%)")
+# 📉 Historical Performance
+st.subheader(f"📈 {ticker_symbol} Performance Analysis")
+st.markdown("This section compares the performance of your investments to the stock's historical performance.")
 
-else:
-    st.info("Please select a stock to begin.")
+# Calculate Returns on Investment
+returns = data['Close'].pct_change()
+investment_returns = investment_tracker['Value'].pct_change().fillna(0)
+
+# Create a DataFrame for comparison
+comparison_df = pd.DataFrame({
+    'Date': data.index,
+    'Stock Return': returns,
+    'Investment Return': investment_returns
+})
+
+# Plot performance comparison
+fig_comparison = px.line(comparison_df, x='Date', y=['Stock Return', 'Investment Return'], title="Stock vs. Investment Return")
+fig_comparison.update_yaxes(title_text="Return (%)")
+st.plotly_chart(fig_comparison, use_container_width=True)
+
+# 📈 Performance Measures for Stock vs Investment
+st.subheader("📊 Performance Measures")
+
+# Annualized Returns for Stock vs Investment
+annualized_stock_return = (1 + returns.mean())**252 - 1
+annualized_investment_return = (1 + investment_returns.mean())**252 - 1
+
+# Volatility (Standard Deviation)
+stock_volatility = returns.std() * np.sqrt(252)
+investment_volatility = investment_returns.std() * np.sqrt(252)
+
+# Sharpe Ratio
+risk_free_rate = 0.02  # Assume a 2% risk-free rate
+stock_sharpe = (annualized_stock_return - risk_free_rate) / stock_volatility
+investment_sharpe = (annualized_investment_return - risk_free_rate) / investment_volatility
+
+# Display Performance Measures
+st.markdown(f"**Stock Annualized Return:** {annualized_stock_return * 100:.2f}%")
+st.markdown(f"**Investment Annualized Return:** {annualized_investment_return * 100:.2f}%")
+st.markdown(f"**Stock Volatility (Annualized):** {stock_volatility * 100:.2f}%")
+st.markdown(f"**Investment Volatility (Annualized):** {investment_volatility * 100:.2f}%")
+st.markdown(f"**Stock Sharpe Ratio:** {stock_sharpe:.2f}")
+st.markdown(f"**Investment Sharpe Ratio:** {investment_sharpe:.2f}")
+
+# Display Option to Show Data Table
+if st.checkbox("Show Investment Data Table"):
+    st.subheader("Investment Tracker Data")
+    st.dataframe(investment_tracker.tail())
 
