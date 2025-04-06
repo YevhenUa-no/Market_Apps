@@ -27,7 +27,7 @@ def load_nasdaq_entities():
         return []
 
 st.title("Stock Performance Dashboard")
-st.markdown("Select a ticker from the dropdown and analyze its performance.")
+st.markdown("Select a ticker and analyze its performance and investment growth.")
 
 # Sidebar for Stock Selection
 st.sidebar.header("Stock Selection")
@@ -55,7 +55,7 @@ investment_amount = st.sidebar.number_input("Investment Amount", min_value=1.0, 
 # Sidebar for Time Period Selection (Only show if a ticker is selected)
 if ticker_symbol:
     st.sidebar.header("Time Period")
-    today = datetime(2025, 4, 6).date()  # Using today's date as per the context
+    today = datetime.now().date()
     time_options = {
         "1 Month": "1mo",
         "3 Months": "3mo",
@@ -140,7 +140,7 @@ if ticker_symbol:
 
             # Price Chart with Selection
             st.subheader(f"{ticker_symbol} Closing Price and Return Analysis")
-            close_prices = data[('Close', ticker_symbol)]
+            close_prices = data.loc[:, ('Close', ticker_symbol)]
             fig_price = px.line(data, x=data.index, y=close_prices, title=f"{ticker_symbol} Closing Price Over Time")
             # Enable selection
             fig_price.update_layout(dragmode='select', selectdirection='h')
@@ -152,7 +152,7 @@ if ticker_symbol:
                 start_date_selected = datetime.strptime(selected_points['range']['x'][0].split(' ')[0], '%Y-%m-%d').date()
                 end_date_selected = datetime.strptime(selected_points['range']['x'][1].split(' ')[0], '%Y-%m-%d').date()
 
-                selected_data = data[(data.index.date >= start_date_selected) & (data.index.date <= end_date_selected)]
+                selected_data = data[(data.index.date >= start_date_selected) & (data.index.date <= end_date_selected)].copy()
 
                 if not selected_data.empty and len(selected_data) > 1:
                     start_price_selected = selected_data.loc[selected_data.index[0], ('Close', ticker_symbol)]
@@ -164,33 +164,46 @@ if ticker_symbol:
                     st.metric("Start Price", f"{start_price_selected:.2f}", delta=None)
                     st.metric("End Price", f"{end_price_selected:.2f}", delta=f"{price_change_selected:.2f}")
                     st.metric("Percentage Return", f"{percent_change_selected:.2f}%", delta=None)
+
+                    # Investment Development Chart for Selected Period
+                    st.subheader("Investment Development (Selected Period)")
+                    investment_date_selected = pd.to_datetime(investment_date_str).date()
+
+                    if investment_date_selected >= selected_data.index.min().date() and investment_date_selected <= selected_data.index.max().date():
+                        initial_price_selected = selected_data.loc[pd.Timestamp(investment_date_selected), ('Close', ticker_symbol)]
+                        selected_data['Value'] = (selected_data.loc[:, ('Close', ticker_symbol)] / initial_price_selected) * investment_amount
+                        fig_investment_selected = px.line(selected_data, x=selected_data.index, y='Value',
+                                                            title=f"Development of ${investment_amount} in {ticker_symbol} (Selected Period)")
+                        fig_investment_selected.update_yaxes(title_text="Estimated Investment Value ($)")
+                        st.plotly_chart(fig_investment_selected, use_container_width=True)
+                    else:
+                        st.warning(f"Investment date is outside the selected period.")
+
                 else:
                     st.info("Select a valid range on the chart to analyze the return.")
             else:
                 st.info("Drag to select a range on the closing price chart to see return analysis for that period.")
 
-            # Investment Development Analysis
-            st.subheader("Investment Development")
-            investment_date = pd.to_datetime(investment_date_str)
+            # Investment Development Analysis (Full Timeframe)
+            st.subheader("Investment Development (Full Timeframe)")
+            investment_date_full = pd.to_datetime(investment_date_str)
 
-            if investment_date.date() >= data.index.min().date() and investment_date.date() <= data.index.max().date():
-                initial_price = data.loc[investment_date, ('Close', ticker_symbol)]
-                investment_timeline = data[data.index >= investment_date].copy()
-                investment_timeline['Value'] = (investment_timeline.loc[:, ('Close', ticker_symbol)] / initial_price) * investment_amount
-
-                fig_investment = px.line(investment_timeline, x=investment_timeline.index, y='Value',
-                                         title=f"Development of ${investment_amount} Investment in {ticker_symbol}")
-                fig_investment.update_yaxes(title_text="Estimated Investment Value ($)")
-                st.plotly_chart(fig_investment, use_container_width=True)
+            if investment_date_full.date() >= data.index.min().date() and investment_date_full.date() <= data.index.max().date():
+                initial_price_full = data.loc[investment_date_full, ('Close', ticker_symbol)]
+                data['Value'] = (data.loc[:, ('Close', ticker_symbol)] / initial_price_full) * investment_amount
+                fig_investment_full = px.line(data, x=data.index, y='Value',
+                                                title=f"Development of ${investment_amount} Investment in {ticker_symbol} Since {investment_date_full.strftime('%Y-%m-%d')}")
+                fig_investment_full.update_yaxes(title_text="Estimated Investment Value ($)")
+                st.plotly_chart(fig_investment_full, use_container_width=True)
             else:
-                st.warning(f"Investment date ({investment_date.date()}) is outside the available data range ({data.index.min().date()} to {data.index.max().date()}).")
+                st.warning(f"Investment date ({investment_date_full.date()}) is outside the available data range ({data.index.min().date()} to {data.index.max().date()}).")
 
 
             # Volume Chart (Optional)
             show_volume = st.checkbox("Show Volume Chart")
             if show_volume:
                 st.subheader(f"{ticker_symbol} Trading Volume")
-                volume_data = data[('Volume', ticker_symbol)]
+                volume_data = data.loc[:, ('Volume', ticker_symbol)]
                 fig_volume = px.bar(data, x=data.index, y=volume_data, title=f"{ticker_symbol} Trading Volume Over Time")
                 st.plotly_chart(fig_volume, use_container_width=True)
 
@@ -215,5 +228,5 @@ if ticker_symbol:
         st.info("Please select a ticker symbol in the sidebar.")
 
 st.markdown("---")
-st.markdown(f"Data as of: {datetime(2025, 4, 6).strftime('%Y-%m-%d')} (Contextual)")
+st.markdown(f"Data as of: {datetime.now().strftime('%Y-%m-%d')}")
 st.markdown("Data source: [NASDAQ Trader](ftp://ftp.nasdaqtrader.com/symboldirectory/) and [Yahoo Finance](https://pypi.org/project/yfinance/)")
