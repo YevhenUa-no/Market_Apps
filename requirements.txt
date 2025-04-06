@@ -5,3 +5,6 @@ matplotlib
 pandas # if you use pandas
 yfinance
 plotly
+plotly.express
+atetime
+io
