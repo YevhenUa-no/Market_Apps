@@ -44,15 +44,42 @@ st.plotly_chart(fig_volume, use_container_width=True)
 if pd.to_datetime(investment_date_full) not in data.index:
     st.warning("Selected investment start date not in available data range. Please choose another date.")
 else:
-    initial_price_full = data.loc[investment_date_full, close_col]
-    data['Value'] = (data[close_col] / initial_price_full) * investment_amount
+    initial_price = data.loc[investment_date_full, close_col]
+    data['Value'] = (data[close_col] / initial_price) * investment_amount
+    final_price = data[close_col].iloc[-1]
+    final_value = data['Value'].iloc[-1]
+    
+    total_return_pct = ((final_price - initial_price) / initial_price) * 100
+    total_gain = final_value - investment_amount
 
-    fig_investment_full = px.line(
+    # Calculate annualized return
+    num_days = (data.index[-1] - investment_date_full).days
+    if num_days > 0:
+        annualized_return_pct = ((final_value / investment_amount) ** (365 / num_days) - 1) * 100
+    else:
+        annualized_return_pct = 0.0
+
+    # Line chart
+    fig_investment = px.line(
         data,
         x=data.index,
         y='Value',
         title=f"Development of ${investment_amount} Investment in {ticker_symbol} Since {investment_date_full.strftime('%Y-%m-%d')}"
     )
-    fig_investment_full.update_yaxes(title_text="Estimated Investment Value ($)")
-    st.plotly_chart(fig_investment_full, use_container_width=True)
+    fig_investment.update_yaxes(title_text="Estimated Investment Value ($)")
+    st.plotly_chart(fig_investment, use_container_width=True)
+
+    # Performance Summary
+    st.subheader("📊 Investment Performance Summary")
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Initial Price", f"${initial_price:.2f}")
+    col2.metric("Final Price", f"${final_price:.2f}")
+    col3.metric("Total Return", f"{total_return_pct:.2f}%")
+
+    col4, col5, col6 = st.columns(3)
+    col4.metric("Current Value", f"${final_value:.2f}")
+    col5.metric("Total Gain", f"${total_gain:.2f}")
+    col6.metric("Annualized Return", f"{annualized_return_pct:.2f}%")
+
 
