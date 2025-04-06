@@ -41,9 +41,10 @@ if ticker_symbol:
             format_func=lambda x: x.strftime("%Y-%m-%d")
         )
 
-        investment_amount = st.sidebar.number_input("Investment Amount ($)", min_value=100, step=100, value=1000)
+        investment_amount = st.sidebar.number_input("Lump-Sum Investment Amount ($)", min_value=100, step=100, value=1000)
+        monthly_amount = st.sidebar.number_input("Monthly Investment Amount ($)", min_value=10, step=10, value=200)
 
-        # Calculate investment performance
+        # Calculate single investment performance
         close_col = "Close"
         initial_price = data.loc[investment_date, close_col]
         data['Value'] = (data[close_col] / initial_price) * investment_amount
@@ -55,11 +56,6 @@ if ticker_symbol:
         num_days = (data.index[-1] - investment_date).days
         annualized_return_pct = ((final_value / investment_amount) ** (365 / num_days) - 1) * 100 if num_days > 0 else 0.0
 
-        # Price chart
-        fig_price = px.line(data, x=data.index, y=close_col, title=f"{ticker_symbol} Closing Price")
-        fig_price.update_yaxes(title_text="Price ($)")
-        st.plotly_chart(fig_price, use_container_width=True)
-
         # Investment value chart
         fig_investment = px.line(
             data,
@@ -70,7 +66,7 @@ if ticker_symbol:
         fig_investment.update_yaxes(title_text="Estimated Investment Value ($)")
         st.plotly_chart(fig_investment, use_container_width=True)
 
-        # Performance metrics
+        # 📊 Investment Performance Summary
         st.subheader("📊 Investment Performance Summary")
         col1, col2, col3 = st.columns(3)
         col1.metric("Initial Price", f"${initial_price:.2f}")
@@ -82,7 +78,37 @@ if ticker_symbol:
         col5.metric("Total Gain", f"${total_gain:.2f}")
         col6.metric("Annualized Return", f"{annualized_return_pct:.2f}%")
 
+        # 📅 Monthly Investment Performance Chart
+        st.subheader("📆 Monthly Investment Comparison")
+
+        monthly_results = []
+        monthly_dates = data.resample("MS").first().index  # first trading day of each month
+
+        for dt in monthly_dates:
+            if dt in data.index:
+                buy_price = data.loc[dt, close_col]
+                shares_bought = monthly_amount / buy_price
+                value_today = shares_bought * final_price
+                monthly_results.append({
+                    "Month": dt.strftime("%Y-%m"),
+                    "Value Today": round(value_today, 2),
+                    "Buy Price": round(buy_price, 2),
+                    "Shares": round(shares_bought, 4),
+                    "Investment": monthly_amount
+                })
+
+        monthly_df = pd.DataFrame(monthly_results)
+        fig_monthly = px.bar(monthly_df, x="Month", y="Value Today", title="Value Today of Each Monthly Investment")
+        fig_monthly.update_yaxes(title_text="Value Today ($)")
+        st.plotly_chart(fig_monthly, use_container_width=True)
+
+        # Summary of monthly investing
+        total_invested = monthly_df["Investment"].sum()
+        total_current_value = monthly_df["Value Today"].sum()
+        st.markdown(f"**Total Invested via Monthly Contributions:** ${total_invested:,.2f}")
+        st.markdown(f"**Current Value of Monthly Investments:** ${total_current_value:,.2f}")
+        st.markdown(f"**Total Gain:** ${total_current_value - total_invested:,.2f} ({((total_current_value / total_invested - 1)*100):.2f}%)")
+
 else:
     st.info("Please select a stock to begin.")
-
 
