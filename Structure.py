@@ -26,16 +26,8 @@ def load_nasdaq_entities():
         st.error(f"Failed to load entities from NASDAQ Trader: {e}")
         return []
 
-# --- Function to search tickers (now searches based on Identifier) ---
-@st.cache_data
-def search_entities(query, all_entities):
-    if not query:
-        return all_entities[:5]
-    results = [entity for entity in all_entities if query.upper() in entity[0].upper()]
-    return sorted(results)
-
 st.title("Stock Performance Dashboard")
-st.markdown("Select a ticker or search by symbol or company name.")
+st.markdown("Select a ticker from the dropdown.")
 
 # Sidebar for Stock Selection
 st.sidebar.header("Stock Selection")
@@ -43,30 +35,14 @@ st.sidebar.header("Stock Selection")
 # Load entities from NASDAQ
 all_available_entities = load_nasdaq_entities()
 
-# Option to select from a dropdown or search
-select_option = st.sidebar.radio("Select Ticker By:", ["Dropdown", "Search by Name"])
-
-ticker_symbol = None
-
-if select_option == "Dropdown":
-    if all_available_entities:
-        selected_entity = st.sidebar.selectbox("Select Ticker", all_available_entities, format_func=lambda x: f"{x[0]}")
-        if selected_entity:
-            ticker_symbol = selected_entity[1]
-    else:
-        st.sidebar.warning("Could not load tickers for the dropdown.")
-elif select_option == "Search by Name":
-    search_query = st.sidebar.text_input("Enter Ticker Symbol or Company Name", "")
-    if search_query:
-        search_results = search_entities(search_query, all_available_entities)
-        if search_results:
-            selected_entity = st.sidebar.selectbox("Search Results", search_results, format_func=lambda x: f"{x[0]}")
-            if selected_entity:
-                ticker_symbol = selected_entity[1]
-        else:
-            st.sidebar.info("No tickers found matching your search on NASDAQ.")
-    else:
-        st.sidebar.info("Try typing a ticker symbol or company name to search NASDAQ listings.")
+# Only Dropdown option
+if all_available_entities:
+    selected_entity = st.sidebar.selectbox("Select Ticker", all_available_entities, format_func=lambda x: f"{x[0]}")
+    if selected_entity:
+        ticker_symbol = selected_entity[1]
+else:
+    st.sidebar.warning("Could not load tickers for the dropdown.")
+    ticker_symbol = None
 
 # Sidebar for Time Period Selection (Only show if a ticker is selected)
 if ticker_symbol:
@@ -176,7 +152,7 @@ if ticker_symbol:
         elif period or start_date:
             st.info(f"No data available for {ticker_symbol} for the selected time period.")
     else:
-        st.info("Try typing a ticker symbol or company name to search NASDAQ listings.")
+        st.info("Could not load tickers for the dropdown.")
 
 st.markdown("---")
 st.markdown("Data source: [NASDAQ Trader](ftp://ftp.nasdaqtrader.com/symboldirectory/) and [Yahoo Finance](https://pypi.org/project/yfinance/)")
