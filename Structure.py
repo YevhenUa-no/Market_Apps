@@ -155,8 +155,8 @@ if ticker_symbol:
                 selected_data = data[(data.index.date >= start_date_selected) & (data.index.date <= end_date_selected)]
 
                 if not selected_data.empty and len(selected_data) > 1:
-                    start_price_selected = selected_data[('Close', ticker_symbol)].iloc[0]
-                    end_price_selected = selected_data[('Close', ticker_symbol)].iloc[-1]
+                    start_price_selected = selected_data.loc[selected_data.index[0], ('Close', ticker_symbol)]
+                    end_price_selected = selected_data.loc[selected_data.index[-1], ('Close', ticker_symbol)]
                     price_change_selected = end_price_selected - start_price_selected
                     percent_change_selected = (price_change_selected / start_price_selected) * 100
 
@@ -174,9 +174,9 @@ if ticker_symbol:
             investment_date = pd.to_datetime(investment_date_str)
 
             if investment_date.date() >= data.index.min().date() and investment_date.date() <= data.index.max().date():
-                initial_price = data.loc[investment_date][('Close', ticker_symbol)]
+                initial_price = data.loc[investment_date, ('Close', ticker_symbol)]
                 investment_timeline = data[data.index >= investment_date].copy()
-                investment_timeline['Value'] = (investment_timeline[('Close', ticker_symbol)] / initial_price) * investment_amount
+                investment_timeline['Value'] = (investment_timeline.loc[:, ('Close', ticker_symbol)] / initial_price) * investment_amount
 
                 fig_investment = px.line(investment_timeline, x=investment_timeline.index, y='Value',
                                          title=f"Development of ${investment_amount} Investment in {ticker_symbol}")
@@ -197,8 +197,8 @@ if ticker_symbol:
             # Calculate and Display Overall Performance Metrics
             st.subheader("Overall Performance Metrics")
             if len(data) > 1:
-                start_price = data[('Close', ticker_symbol)].iloc[0]
-                end_price = data[('Close', ticker_symbol)].iloc[-1]
+                start_price = data.loc[data.index[0], ('Close', ticker_symbol)]
+                end_price = data.loc[data.index[-1], ('Close', ticker_symbol)]
                 price_change = end_price - start_price
                 percent_change = (price_change / start_price) * 100
 
