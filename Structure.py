@@ -1,7 +1,7 @@
 import pandas as pd
- import plotly.express as px
- from datetime import datetime
- import numpy as np
+import plotly.express as px
+from datetime import datetime
+import numpy as np
  
  # Title and Sidebar Setup
  st.title("📊 Stock Portfolio Analysis")
