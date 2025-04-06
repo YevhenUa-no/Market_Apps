@@ -174,9 +174,9 @@ if ticker_symbol:
             investment_date = pd.to_datetime(investment_date_str)
 
             if investment_date.date() >= data.index.min().date() and investment_date.date() <= data.index.max().date():
-                initial_price = data.loc[investment_date]['Close']
+                initial_price = data.loc[investment_date][('Close', ticker_symbol)]
                 investment_timeline = data[data.index >= investment_date].copy()
-                investment_timeline['Value'] = (investment_timeline['Close'] / initial_price) * investment_amount
+                investment_timeline['Value'] = (investment_timeline[('Close', ticker_symbol)] / initial_price) * investment_amount
 
                 fig_investment = px.line(investment_timeline, x=investment_timeline.index, y='Value',
                                          title=f"Development of ${investment_amount} Investment in {ticker_symbol}")
