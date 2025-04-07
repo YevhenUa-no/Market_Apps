@@ -84,31 +84,28 @@ if ticker_symbol:
             final_value_full = investment_data['FullSumValue'].iloc[-1]
 
             # --- Scenario 2: Invest Part Monthly ---
-            investment_dates_monthly = pd.to_datetime(investment_data.resample("MS").first().index)
-            investment_schedule = {date.strftime("%Y-%m-%d"): monthly_investment_amount for date in investment_dates_monthly if date >= pd.to_datetime(investment_date)}
+            monthly_investment_dates = pd.date_range(start=investment_date, end=investment_data.index[-1], freq='MS')
+            investment_schedule = {date.strftime("%Y-%m-%d"): monthly_investment_amount for date in monthly_investment_dates}
             investment_schedule[investment_date.strftime("%Y-%m-%d")] = investment_schedule.get(investment_date.strftime("%Y-%m-%d"), 0) + initial_investment_amount
 
             monthly_data = {}
             total_shares_monthly = 0
             total_invested_monthly_calc = 0
 
-            # Process initial investment
-            initial_date_str = investment_date.strftime("%Y-%m-%d")
-            initial_price = investment_data.loc[pd.to_datetime(investment_date), close_col]
-            total_invested_monthly_calc += initial_investment_amount
-            total_shares_monthly += initial_investment_amount / initial_price
-            monthly_data[initial_date_str[:7]] = [initial_date_str, total_invested_monthly_calc, total_shares_monthly * initial_price]
+            seen_months = set()
 
             for date, price in investment_data[close_col].items():
-                if date > pd.to_datetime(investment_date):
-                    month_year_str = date.strftime("%Y-%m-%d")
-                    if month_year_str[:7] not in monthly_data: # Only process if the month hasn't been recorded yet
-                        investment_on_month = investment_schedule.get(month_year_str, 0)
-                        if investment_on_month > 0:
-                            shares_bought = investment_on_month / price
-                            total_shares_monthly += shares_bought
-                            total_invested_monthly_calc += investment_on_month
-                        monthly_data[month_year_str[:7]] = [date.strftime("%Y-%m-%d"), total_invested_monthly_calc, total_shares_monthly * price]
+                date_str = date.strftime("%Y-%m-%d")
+                month_year_str = date.strftime("%Y-%m")
+
+                if month_year_str not in seen_months:
+                    investment_on_date = investment_schedule.get(date_str, 0)
+                    if investment_on_date > 0:
+                        shares_bought = investment_on_date / price
+                        total_shares_monthly += shares_bought
+                        total_invested_monthly_calc += investment_on_date
+                    monthly_data[month_year_str] = [date_str, total_invested_monthly_calc, total_shares_monthly * price]
+                    seen_months.add(month_year_str)
 
             accumulated_df_monthly = pd.DataFrame(monthly_data.values(), columns=['Date', 'Total Invested', 'Portfolio Value'])
             accumulated_df_monthly = accumulated_df_monthly.sort_values(by='Date').reset_index(drop=True)
@@ -122,15 +119,17 @@ if ticker_symbol:
             total_shares_chart += initial_investment_amount / initial_price_chart
             portfolio_value_monthly_ts[pd.to_datetime(investment_date)] = total_shares_chart * initial_price_chart
 
+            monthly_investment_dates_chart = pd.date_range(start=investment_date, end=investment_data.index[-1], freq='MS')
+            investment_schedule_chart = {date.strftime("%Y-%m-%d"): monthly_investment_amount for date in monthly_investment_dates_chart}
+            investment_schedule_chart[investment_date.strftime("%Y-%m-%d")] = investment_schedule_chart.get(investment_date.strftime("%Y-%m-%d"), 0) + initial_investment_amount
+
             for date, price in investment_data[close_col].items():
-                if date > pd.to_datetime(investment_date):
-                    month_year_str = date.strftime("%Y-%m-%d")
-                    if month_year_str in investment_schedule and month_year_str != investment_date.strftime("%Y-%m-%d"):
-                        investment_on_month = investment_schedule.get(month_year_str, 0)
-                        if investment_on_month > 0:
-                            shares_bought = investment_on_month / price
-                            total_shares_chart += shares_bought
-                            total_invested_chart += investment_on_month
+                date_str = date.strftime("%Y-%m-%d")
+                investment_on_date = investment_schedule_chart.get(date_str, 0)
+                if investment_on_date > 0:
+                    shares_bought = investment_on_date / price
+                    total_shares_chart += shares_bought
+                    total_invested_chart += investment_on_date
                 portfolio_value_monthly_ts[date] = total_shares_chart * price
 
             portfolio_df_monthly_chart = pd.DataFrame({'Value': portfolio_value_monthly_ts}).dropna()
@@ -155,7 +154,7 @@ if ticker_symbol:
             col2.metric("Final Value (Part Monthly)", f"${final_value_monthly:,.2f}")
 
             initial_total_investment = initial_investment_amount
-            total_monthly_contributions = monthly_investment_amount * (len(investment_schedule) - 1) if len(investment_schedule) > 1 else 0
+            total_monthly_contributions = monthly_investment_amount * (len(monthly_investment_dates) - 1) if len(monthly_investment_dates) > 1 else 0
             total_invested_monthly_summary = initial_total_investment + total_monthly_contributions
 
             col3, col4 = st.columns(2)
