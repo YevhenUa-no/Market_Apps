@@ -92,25 +92,40 @@ if ticker_symbol:
             total_shares_monthly = 0
             total_invested_monthly_calc = 0
             invested_months = set()
-
             sorted_investment_data = investment_data.sort_index()
 
-            for date, price in sorted_investment_data[close_col].items():
-                date_str = date.strftime("%Y-%m-%d")
-                month_year_str = date.strftime("%Y-%m")
+            scheduled_months = pd.to_datetime(monthly_investment_dates).to_period('M').unique()
 
-                if date >= pd.to_datetime(investment_date) and month_year_str not in invested_months:
-                    investment_on_date = investment_schedule.get(date_str, 0)
-                    if investment_on_date > 0:
-                        shares_bought = investment_on_date / price
+            for period in scheduled_months:
+                start_of_month = period.start_time
+                end_of_month = period.end_time + pd.Timedelta(days=9) # Check up to 10 days into the month
+
+                first_trading_day_this_month = None
+                price_on_first_trading_day = None
+
+                for date, price in sorted_investment_data[close_col].items():
+                    if start_of_month <= date <= end_of_month and period.strftime('%Y-%m') not in invested_months:
+                        first_trading_day_this_month = date
+                        price_on_first_trading_day = price
+                        break  # Found the first trading day within the first 10 days
+
+                if first_trading_day_this_month is not None:
+                    investment_date_str = first_trading_day_this_month.strftime('%Y-%m-%d')
+                    investment_on_date = investment_schedule.get(investment_date_str, 0)
+
+                    if investment_on_date > 0 or period == pd.to_datetime(investment_date).to_period('M'): # Ensure initial month is recorded
+                        shares_bought = investment_on_date / price_on_first_trading_day if price_on_first_trading_day else 0
                         total_shares_monthly += shares_bought
                         total_invested_monthly_calc += investment_on_date
-                        monthly_data[month_year_str] = [date, total_invested_monthly_calc, total_shares_monthly * price]
-                        invested_months.add(month_year_str)
-                    elif date.strftime("%Y-%m-%d") in investment_schedule and month_year_str not in invested_months:
-                        # Record the first available date of a scheduled investment month even if investment is 0 (initial month)
-                        monthly_data[month_year_str] = [date, total_invested_monthly_calc, total_shares_monthly * price]
-                        invested_months.add(month_year_str)
+                        monthly_data[period.strftime('%Y-%m')] = [first_trading_day_this_month, total_invested_monthly_calc, total_shares_monthly * price_on_first_trading_day if price_on_first_trading_day else 0]
+                        invested_months.add(period.strftime('%Y-%m'))
+                    elif period.strftime('%Y-%m') not in invested_months and period > pd.to_datetime(investment_date).to_period('M'):
+                        # If no investment on the first 10 days, still record the first available for tracking portfolio
+                        for date, price in sorted_investment_data[close_col].items():
+                            if start_of_month <= date <= end_of_month:
+                                monthly_data[period.strftime('%Y-%m')] = [date, total_invested_monthly_calc, total_shares_monthly * price]
+                                invested_months.add(period.strftime('%Y-%m'))
+                                break
 
 
             accumulated_df_monthly = pd.DataFrame(monthly_data.values(), columns=['Date', 'Total Invested', 'Portfolio Value'])
@@ -170,48 +185,7 @@ if ticker_symbol:
             # --- Accumulated Values Table (Monthly Paid Option) ---
             st.subheader("Monthly Investment Accumulation")
             if not accumulated_df_monthly.empty:
-                # --- Check and Display ---
-                expected_invested = initial_investment_amount
-                valid_monthly_data = []
-                expected_month = pd.to_datetime(investment_date).to_period('M')
-                investment_number = 0
-
-                for index, row in accumulated_df_monthly.iterrows():
-                    current_date = row['Date']
-                    current_month = current_date.to_period('M')
-                    current_invested = row['Total Invested']
-
-                    if current_month == expected_month:
-                        expected_invested_this_month = initial_investment_amount + (investment_number * monthly_investment_amount)
-                        if abs(current_invested - expected_invested_this_month) < 1e-6: # Use tolerance for float comparison
-                            valid_monthly_data.append(row)
-                            expected_month += 1
-                            investment_number += 1
-                        else:
-                            st.warning(f"Warning: Total invested mismatch for {current_date.strftime('%Y-%m-%d')}. Expected: {expected_invested_this_month:.2f}, Got: {current_invested:.2f}")
-                    elif current_month > expected_month:
-                        st.warning(f"Warning: Skipped month detected before {current_date.strftime('%Y-%m-%d')}. Expected month: {expected_month}")
-                        expected_month += 1
-                        # Check current month again
-                        expected_invested_this_month = initial_investment_amount + (investment_number * monthly_investment_amount)
-                        if abs(current_invested - expected_invested_this_month) < 1e-6:
-                            valid_monthly_data.append(row)
-                            expected_month += 1
-                            investment_number += 1
-                        else:
-                            st.warning(f"Warning: Total invested mismatch for {current_date.strftime('%Y-%m-%d')}. Expected: {expected_invested_this_month:.2f}, Got: {current_invested:.2f}")
-                    elif current_month < expected_month:
-                        st.warning(f"Warning: Duplicate or out-of-order month: {current_date.strftime('%Y-%m-%d')}")
-
-                validated_df = pd.DataFrame(valid_monthly_data)
-                st.dataframe(validated_df, use_container_width=True)
-
-                num_investment_months = len(validated_df) - 1 if not validated_df.empty else 0
-                years_invested = (validated_df['Date'].iloc[-1].year if not validated_df.empty else pd.to_datetime(investment_date).year) - pd.to_datetime(investment_date).year
-                expected_months = years_invested * 12
-                if num_investment_months < expected_months - 1: # Allow for potential last partial year
-                    st.warning(f"Note: The table shows {num_investment_months} monthly investments (excluding initial) over {years_invested} years. Expecting around {expected_months}.")
-
+                st.dataframe(accumulated_df_monthly, use_container_width=True)
             else:
                 st.info("No monthly investments made during the selected period.")
 
