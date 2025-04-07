@@ -67,8 +67,8 @@ if ticker_symbol:
             format_func=lambda x: x.strftime("%Y-%m-%d")
         )
 
-        initial_investment_amount = st.sidebar.number_input("Initial Investment Amount (<span class="math-inline">\)", min\_value\=100, step\=100, value\=1000\)
-monthly\_investment\_amount \= st\.sidebar\.number\_input\("Monthly Investment Amount \(</span>)", min_value=10, step=10, value=1000) # Changed default to match screenshot
+        initial_investment_amount = st.sidebar.number_input("Initial Investment Amount ($)", min_value=100, step=100, value=1000)
+        monthly_investment_amount = st.sidebar.number_input("Monthly Investment Amount ($)", min_value=10, step=10, value=1000) # Changed default to match screenshot
 
         close_col = "Close"
 
@@ -91,12 +91,12 @@ monthly\_investment\_amount \= st\.sidebar\.number\_input\("Monthly Investment A
             monthly_data = {}
             total_shares_monthly = 0
             total_invested_monthly_calc = 0
-
+            expected_investment = 0
             processed_months = set()
 
             sorted_investment_data = investment_data.sort_index()
 
-            for scheduled_date_str in sorted(investment_schedule.keys()):
+            for i, scheduled_date_str in enumerate(sorted(investment_schedule.keys())):
                 scheduled_date = pd.to_datetime(scheduled_date_str)
                 month_year_str = scheduled_date.strftime("%Y-%m")
 
@@ -115,14 +115,15 @@ monthly\_investment\_amount \= st\.sidebar\.number\_input\("Monthly Investment A
                         if investment_on_schedule > 0:
                             shares_bought = investment_on_schedule / first_available_price
                             total_shares_monthly += shares_bought
-                            total_invested_monthly_calc += investment_on_schedule
+                            total_invested_monthly_calc = initial_investment_amount + (i * monthly_investment_amount) # Recalculate based on schedule
+
                         monthly_data[month_year_str] = [first_available_date.strftime("%Y-%m-%d"), total_invested_monthly_calc, total_shares_monthly * first_available_price]
                         processed_months.add(month_year_str)
 
             accumulated_df_monthly = pd.DataFrame(monthly_data.values(), columns=['Date', 'Total Invested', 'Portfolio Value'])
             accumulated_df_monthly = accumulated_df_monthly.sort_values(by='Date').reset_index(drop=True)
 
-            # Calculate final portfolio value for the chart
+            # --- Calculate final portfolio value for the chart (remains mostly the same) ---
             portfolio_value_monthly_ts = pd.Series(index=investment_data.index, dtype=float)
             total_shares_chart = 0
             total_invested_chart = 0
@@ -133,3 +134,98 @@ monthly\_investment\_amount \= st\.sidebar\.number\_input\("Monthly Investment A
 
             monthly_investment_dates_chart = pd.date_range(start=investment_date, end=investment_data.index[-1], freq='MS')
             investment_schedule_chart = {date.strftime("%Y-%m-%d"): monthly_investment_amount for date in monthly_investment_dates_chart}
+            investment_schedule_chart[investment_date.strftime("%Y-%m-%d")] = investment_schedule_chart.get(investment_date.strftime("%Y-%m-%d"), 0) + initial_investment_amount
+
+            for date, price in investment_data[close_col].items():
+                date_str = date.strftime("%Y-%m-%d")
+                investment_on_date = investment_schedule_chart.get(date_str, 0)
+                if investment_on_date > 0:
+                    shares_bought = investment_on_date / price
+                    total_shares_chart += shares_bought
+                    total_invested_chart += investment_on_date
+                portfolio_value_monthly_ts[date] = total_shares_chart * price
+
+            portfolio_df_monthly_chart = pd.DataFrame({'Value': portfolio_value_monthly_ts}).dropna()
+            final_value_monthly = portfolio_df_monthly_chart['Value'].iloc[-1] if not portfolio_df_monthly_chart.empty else 0
+
+            # --- Comparison Chart Starting from Investment Date ---
+            comparison_df_invested = pd.DataFrame({
+                'Date': investment_data.index,
+                'Invest Full Sum Initially': investment_data['FullSumValue'],
+                'Invest Part Monthly': portfolio_df_monthly_chart['Value'].reindex(investment_data.index, method='pad')
+            })
+
+            fig_comparison_invested = px.line(comparison_df_invested, x='Date', y=['Invest Full Sum Initially', 'Invest Part Monthly'],
+                                             title=f"Comparison Since Investment Date: {investment_date.date()}")
+            fig_comparison_invested.update_yaxes(title_text="Portfolio Value ($)")
+            st.plotly_chart(fig_comparison_invested, use_container_width=True)
+
+            # --- Comparison Summary ---
+            st.subheader("💰 Comparison Summary")
+            col1, col2 = st.columns(2)
+            col1.metric("Final Value (Full Sum)", f"${final_value_full:,.2f}")
+            col2.metric("Final Value (Part Monthly)", f"${final_value_monthly:,.2f}")
+
+            initial_total_investment = initial_investment_amount
+            total_monthly_contributions = monthly_investment_amount * (len(monthly_investment_dates) - 1) if len(monthly_investment_dates) > 1 else 0
+            total_invested_monthly_summary = initial_total_investment + total_monthly_contributions
+
+            col3, col4 = st.columns(2)
+            col3.metric("Total Invested (Full Sum)", f"${total_investment_full:,.2f}")
+            col4.metric("Total Invested (Part Monthly)", f"${total_invested_monthly_summary:,.2f}")
+
+            # --- Accumulated Values Table (Monthly Paid Option) ---
+            st.subheader("Monthly Investment Accumulation")
+            if not accumulated_df_monthly.empty:
+                # --- Add a check for increasing total invested ---
+                previous_invested = 0
+                valid_monthly_data = []
+                expected_month = pd.to_datetime(investment_date).to_period('M')
+                investment_count = 0
+
+                for row in accumulated_df_monthly.itertuples(index=False):
+                    current_date = pd.to_datetime(row.Date)
+                    current_month = current_date.to_period('M')
+                    current_invested = row._2 # Total Invested is the second column
+
+                    if current_month == expected_month:
+                        if current_invested == initial_investment_amount + (investment_count * monthly_investment_amount):
+                            valid_monthly_data.append(row)
+                            previous_invested = current_invested
+                            expected_month += 1
+                            investment_count += 1
+                        else:
+                            print(f"Warning: Total invested mismatch for {row.Date}. Expected: {initial_investment_amount + (investment_count * monthly_investment_amount)}, Got: {current_invested}")
+                    elif current_month > expected_month:
+                        print(f"Warning: Skipped month detected before {row.Date}. Expected month: {expected_month}")
+                        # Optionally fill in a row for the skipped month with the previous value
+                        expected_month += 1
+                        # Check again for the current month
+                        if current_invested == initial_investment_amount + (investment_count * monthly_investment_amount):
+                            valid_monthly_data.append(row)
+                            previous_invested = current_invested
+                            expected_month += 1
+                            investment_count += 1
+                        else:
+                            print(f"Warning: Total invested mismatch for {row.Date}. Expected: {initial_investment_amount + (investment_count * monthly_investment_amount)}, Got: {current_invested}")
+                    elif current_month < expected_month:
+                        print(f"Warning: Duplicate or out-of-order month: {row.Date}")
+
+                validated_df = pd.DataFrame(valid_monthly_data, columns=['Date', 'Total Invested', 'Portfolio Value'])
+                st.dataframe(validated_df, use_container_width=True)
+
+                # --- Basic check for 12 months per year (after initial investment) ---
+                num_investment_months = len(validated_df) - 1 if not validated_df.empty else 0
+                years_invested = (validated_df['Date'].iloc[-1].year if not validated_df.empty else pd.to_datetime(investment_date).year) - pd.to_datetime(investment_date).year
+                expected_months = years_invested * 12
+                if num_investment_months < expected_months:
+                    st.warning(f"Note: The table shows {num_investment_months} monthly investments (excluding initial) over {years_invested} years. Expecting around {expected_months}.")
+
+            else:
+                st.info("No monthly investments made during the selected period.")
+
+        else:
+            st.warning(f"No data available on or after the selected investment date: {investment_date}")
+
+else:
+    st.info("Please select a stock to begin.")
