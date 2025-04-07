@@ -68,7 +68,7 @@ if ticker_symbol:
         )
 
         initial_investment_amount = st.sidebar.number_input("Initial Investment Amount ($)", min_value=100, step=100, value=1000)
-        monthly_investment_amount = st.sidebar.number_input("Monthly Investment Amount ($)", min_value=10, step=10, value=200)
+        monthly_investment_amount = st.sidebar.number_input("Monthly Investment Amount ($)", min_value=10, step=10, value=1000) # Changed default to match screenshot
 
         close_col = "Close"
 
@@ -90,17 +90,26 @@ if ticker_symbol:
 
             portfolio_value_monthly = pd.Series(index=investment_data.index, dtype=float)
             total_shares_monthly = 0
-            total_invested_monthly = 0
+            total_invested_monthly_calc = 0 # Initialize here to track total invested correctly
             accumulated_values_monthly = []
 
+            # Add initial investment to the total invested
+            total_invested_monthly_calc += initial_investment_amount
+            initial_price = investment_data.loc[pd.to_datetime(investment_date), close_col]
+            total_shares_monthly += initial_investment_amount / initial_price
+            accumulated_values_monthly.append([investment_date.strftime("%Y-%m-%d"), total_invested_monthly_calc, total_shares_monthly * initial_price])
+
             for date, price in investment_data[close_col].items():
-                investment_on_date = investment_schedule.get(date.strftime("%Y-%m-%d"), 0)
-                if investment_on_date > 0:
-                    shares_bought = investment_on_date / price
-                    total_shares_monthly += shares_bought
-                    total_invested_monthly += investment_on_date
+                if date > pd.to_datetime(investment_date):
+                    month_year_str = date.strftime("%Y-%m-%d")
+                    if month_year_str in investment_schedule and month_year_str != investment_date.strftime("%Y-%m-%d"):
+                        investment_on_month = investment_schedule.get(month_year_str, 0)
+                        if investment_on_month > 0:
+                            shares_bought = investment_on_month / price
+                            total_shares_monthly += shares_bought
+                            total_invested_monthly_calc += investment_on_month
                 portfolio_value_monthly[date] = total_shares_monthly * price
-                accumulated_values_monthly.append([date.strftime("%Y-%m-%d"), total_invested_monthly, portfolio_value_monthly[date]])
+                accumulated_values_monthly.append([date.strftime("%Y-%m-%d"), total_invested_monthly_calc, portfolio_value_monthly[date]])
 
             portfolio_df_monthly = pd.DataFrame({'Value': portfolio_value_monthly})
             portfolio_df_monthly = portfolio_df_monthly.dropna()
@@ -126,11 +135,11 @@ if ticker_symbol:
 
             initial_total_investment = initial_investment_amount
             total_monthly_contributions = monthly_investment_amount * (len(investment_schedule) - 1) if len(investment_schedule) > 1 else 0
-            total_invested_monthly_calc = initial_total_investment + total_monthly_contributions
+            total_invested_monthly_summary = initial_total_investment + total_monthly_contributions
 
             col3, col4 = st.columns(2)
             col3.metric("Total Invested (Full Sum)", f"${total_investment_full:,.2f}")
-            col4.metric("Total Invested (Part Monthly)", f"${total_invested_monthly_calc:,.2f}")
+            col4.metric("Total Invested (Part Monthly)", f"${total_invested_monthly_summary:,.2f}")
 
             # --- Accumulated Values Table (Monthly Paid Option) ---
             st.subheader("Monthly Investment Accumulation")
