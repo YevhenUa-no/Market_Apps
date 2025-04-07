@@ -95,10 +95,11 @@ if ticker_symbol:
             sorted_investment_data = investment_data.sort_index()
 
             scheduled_months = pd.to_datetime(monthly_investment_dates).to_period('M').unique()
+            data_timezone = investment_data.index.tz
 
             for period in scheduled_months:
-                start_of_month = period.start_time
-                end_of_month = period.end_time + pd.Timedelta(days=9) # Check up to 10 days into the month
+                start_of_month = pd.Timestamp(period.start_time, tz=data_timezone)
+                end_of_month = pd.Timestamp(period.end_time + pd.Timedelta(days=9), tz=data_timezone)
 
                 first_trading_day_this_month = None
                 price_on_first_trading_day = None
