@@ -117,7 +117,7 @@ if ticker_symbol:
                             total_shares_monthly += shares_bought
                             total_invested_monthly_calc = initial_investment_amount + (i * monthly_investment_amount) # Recalculate based on schedule
 
-                        monthly_data[month_year_str] = [first_available_date.strftime("%Y-%m-%d"), total_invested_monthly_calc, total_shares_monthly * first_available_price]
+                        monthly_data[month_year_str] = [first_available_date, total_invested_monthly_calc, total_shares_monthly * first_available_price] # Store Timestamp object
                         processed_months.add(month_year_str)
 
             accumulated_df_monthly = pd.DataFrame(monthly_data.values(), columns=['Date', 'Total Invested', 'Portfolio Value'])
@@ -184,7 +184,7 @@ if ticker_symbol:
                 investment_count = 0
 
                 for row in accumulated_df_monthly.itertuples(index=False):
-                    current_date = pd.to_datetime(row.Date)
+                    current_date = row.Date # Already a Timestamp object
                     current_month = current_date.to_period('M')
                     current_invested = row._2 # Total Invested is the second column
 
@@ -195,9 +195,9 @@ if ticker_symbol:
                             expected_month += 1
                             investment_count += 1
                         else:
-                            print(f"Warning: Total invested mismatch for {row.Date}. Expected: {initial_investment_amount + (investment_count * monthly_investment_amount)}, Got: {current_invested}")
+                            st.warning(f"Warning: Total invested mismatch for {row.Date.strftime('%Y-%m-%d')}. Expected: {initial_investment_amount + (investment_count * monthly_investment_amount)}, Got: {current_invested}")
                     elif current_month > expected_month:
-                        print(f"Warning: Skipped month detected before {row.Date}. Expected month: {expected_month}")
+                        st.warning(f"Warning: Skipped month detected before {row.Date.strftime('%Y-%m-%d')}. Expected month: {expected_month}")
                         # Optionally fill in a row for the skipped month with the previous value
                         expected_month += 1
                         # Check again for the current month
@@ -207,9 +207,9 @@ if ticker_symbol:
                             expected_month += 1
                             investment_count += 1
                         else:
-                            print(f"Warning: Total invested mismatch for {row.Date}. Expected: {initial_investment_amount + (investment_count * monthly_investment_amount)}, Got: {current_invested}")
+                            st.warning(f"Warning: Total invested mismatch for {row.Date.strftime('%Y-%m-%d')}. Expected: {initial_investment_amount + (investment_count * monthly_investment_amount)}, Got: {current_invested}")
                     elif current_month < expected_month:
-                        print(f"Warning: Duplicate or out-of-order month: {row.Date}")
+                        st.warning(f"Warning: Duplicate or out-of-order month: {row.Date.strftime('%Y-%m-%d')}")
 
                 validated_df = pd.DataFrame(valid_monthly_data, columns=['Date', 'Total Invested', 'Portfolio Value'])
                 st.dataframe(validated_df, use_container_width=True)
