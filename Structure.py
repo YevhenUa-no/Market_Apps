@@ -93,9 +93,9 @@ if ticker_symbol:
             total_invested_monthly_calc = 0
             invested_months = set()
             sorted_investment_data = investment_data.sort_index()
+            data_timezone = investment_data.index.tz
 
             scheduled_months = pd.to_datetime(monthly_investment_dates).to_period('M').unique()
-            data_timezone = investment_data.index.tz
 
             for period in scheduled_months:
                 start_of_month = pd.Timestamp(period.start_time, tz=data_timezone)
@@ -104,29 +104,30 @@ if ticker_symbol:
                 first_trading_day_this_month = None
                 price_on_first_trading_day = None
 
+                # Find the first trading day within the first 10 days of the month
                 for date, price in sorted_investment_data[close_col].items():
                     if start_of_month <= date <= end_of_month and period.strftime('%Y-%m') not in invested_months:
                         first_trading_day_this_month = date
                         price_on_first_trading_day = price
-                        break  # Found the first trading day within the first 10 days
+                        break
 
+                # If a trading day is found within the first 10 days, record the investment
                 if first_trading_day_this_month is not None:
                     investment_date_str = first_trading_day_this_month.strftime('%Y-%m-%d')
                     investment_on_date = investment_schedule.get(investment_date_str, 0)
 
-                    if investment_on_date > 0 or period == pd.to_datetime(investment_date).to_period('M'): # Ensure initial month is recorded
-                        shares_bought = investment_on_date / price_on_first_trading_day if price_on_first_trading_day else 0
-                        total_shares_monthly += shares_bought
-                        total_invested_monthly_calc += investment_on_date
-                        monthly_data[period.strftime('%Y-%m')] = [first_trading_day_this_month, total_invested_monthly_calc, total_shares_monthly * price_on_first_trading_day if price_on_first_trading_day else 0]
-                        invested_months.add(period.strftime('%Y-%m'))
-                    elif period.strftime('%Y-%m') not in invested_months and period > pd.to_datetime(investment_date).to_period('M'):
-                        # If no investment on the first 10 days, still record the first available for tracking portfolio
-                        for date, price in sorted_investment_data[close_col].items():
-                            if start_of_month <= date <= end_of_month:
-                                monthly_data[period.strftime('%Y-%m')] = [date, total_invested_monthly_calc, total_shares_monthly * price]
-                                invested_months.add(period.strftime('%Y-%m'))
-                                break
+                    shares_bought = investment_on_date / price_on_first_trading_day if price_on_first_trading_day else 0
+                    total_shares_monthly += shares_bought
+                    total_invested_monthly_calc += investment_on_date
+                    monthly_data[period.strftime('%Y-%m')] = [first_trading_day_this_month, total_invested_monthly_calc, total_shares_monthly * price_on_first_trading_day if price_on_first_trading_day else 0]
+                    invested_months.add(period.strftime('%Y-%m'))
+                elif period.strftime('%Y-%m') not in invested_months and period >= pd.to_datetime(investment_date).to_period('M'):
+                    # If no trading day in the first 10, use the first available day of the month for record keeping
+                    for date, price in sorted_investment_data[close_col].items():
+                        if start_of_month <= date <= period.end_time and period.strftime('%Y-%m') not in invested_months:
+                            monthly_data[period.strftime('%Y-%m')] = [date, total_invested_monthly_calc, total_shares_monthly * price]
+                            invested_months.add(period.strftime('%Y-%m'))
+                            break
 
 
             accumulated_df_monthly = pd.DataFrame(monthly_data.values(), columns=['Date', 'Total Invested', 'Portfolio Value'])
