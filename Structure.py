@@ -91,6 +91,7 @@ if ticker_symbol:
             portfolio_value_monthly = pd.Series(index=investment_data.index, dtype=float)
             total_shares_monthly = 0
             total_invested_monthly = 0
+            accumulated_values_monthly = []
 
             for date, price in investment_data[close_col].items():
                 investment_on_date = investment_schedule.get(date.strftime("%Y-%m-%d"), 0)
@@ -99,6 +100,7 @@ if ticker_symbol:
                     total_shares_monthly += shares_bought
                     total_invested_monthly += investment_on_date
                 portfolio_value_monthly[date] = total_shares_monthly * price
+                accumulated_values_monthly.append([date.strftime("%Y-%m-%d"), total_invested_monthly, portfolio_value_monthly[date]])
 
             portfolio_df_monthly = pd.DataFrame({'Value': portfolio_value_monthly})
             portfolio_df_monthly = portfolio_df_monthly.dropna()
@@ -129,6 +131,14 @@ if ticker_symbol:
             col3, col4 = st.columns(2)
             col3.metric("Total Invested (Full Sum)", f"${total_investment_full:,.2f}")
             col4.metric("Total Invested (Part Monthly)", f"${total_invested_monthly_calc:,.2f}")
+
+            # --- Accumulated Values Table (Monthly Paid Option) ---
+            st.subheader("Monthly Investment Accumulation")
+            if accumulated_values_monthly:
+                accumulated_df = pd.DataFrame(accumulated_values_monthly, columns=['Date', 'Total Invested', 'Portfolio Value'])
+                st.dataframe(accumulated_df, use_container_width=True)
+            else:
+                st.info("No monthly investments made during the selected period.")
 
         else:
             st.warning(f"No data available on or after the selected investment date: {investment_date}")
